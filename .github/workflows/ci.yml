@@ -1,0 +1,45 @@
+name: Backend CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:a5074487380d4e686036ce61ed6f2d363939ae9a0c40123d1a9e3bb3a5f344b4
+        env:
+          POSTGRES_USER: typstoria
+          POSTGRES_PASSWORD: integration_only
+          POSTGRES_DB: typstoria_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U typstoria -d typstoria_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://typstoria:integration_only@127.0.0.1:5432/typstoria_test
+      SWAGGER_ENABLED: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run migration:run
+      - run: npm run test:integration
+      - run: npm run openapi:export
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openapi
+          path: openapi.json
