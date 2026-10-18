@@ -1,38 +1,17 @@
-import { Body, Controller, INestApplication, Post } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString, MaxLength } from 'class-validator';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
 import { configureApplication } from '../src/bootstrap/configure-application';
 import { ConfigurationModule } from '../src/config/configuration.module';
 import { HealthModule } from '../src/modules/health/health.module';
-
-class ValidationFixtureDto {
-  @ApiProperty()
-  @IsString()
-  @MaxLength(20)
-  title!: string;
-}
-
-@Controller('test-fixture')
-class ValidationFixtureController {
-  @Post()
-  create(@Body() body: ValidationFixtureDto): ValidationFixtureDto {
-    return body;
-  }
-}
+import { ValidationFixtureController } from './fixtures/validation-fixture.controller';
 
 describe('HTTP foundation', () => {
   let app: INestApplication;
   const database = { query: jest.fn() };
 
   beforeAll(async () => {
-    process.env.NODE_ENV = 'test';
-    process.env.DATABASE_URL = 'postgresql://test:test@127.0.0.1:5432/typstoria_test';
-    process.env.SWAGGER_ENABLED = 'true';
-    process.env.CORS_ORIGINS = 'http://localhost:5173';
-
     const module = await Test.createTestingModule({
       imports: [ConfigurationModule, HealthModule],
       controllers: [ValidationFixtureController],
@@ -80,6 +59,29 @@ describe('HTTP foundation', () => {
     expect(result.body.info.title).toBe('Typstoria API');
     expect(result.body.paths['/health/ready'].get.responses['503']).toBeDefined();
     expect(result.body.components.schemas.ErrorResponseDto).toBeDefined();
+  });
+
+  it('infers response models, nested DTOs and summaries from code', async () => {
+    const { body } = await request(app.getHttpServer()).get('/docs-json').expect(200);
+    expect(
+      body.paths['/health/ready'].get.responses['200'].content['application/json'].schema,
+    ).toEqual({
+      $ref: '#/components/schemas/ReadyHealthDto',
+    });
+    expect(body.paths['/health/ready'].get.summary).toBe('Check whether PostgreSQL is reachable.');
+    expect(body.components.schemas.ReadyHealthDto.properties.checks).toEqual({
+      $ref: '#/components/schemas/DatabaseCheckDto',
+    });
+    expect(body.components.schemas.ReadyHealthDto.properties.status.enum).toEqual(['ok']);
+  });
+
+  it('infers request constraints, required fields and optional arrays without ApiProperty', async () => {
+    const { body } = await request(app.getHttpServer()).get('/docs-json').expect(200);
+    const schema = body.components.schemas.ValidationFixtureDto;
+    expect(schema.required).toEqual(['title']);
+    expect(schema.properties.title).toMatchObject({ type: 'string', maxLength: 20 });
+    expect(schema.properties.labels).toMatchObject({ type: 'array', items: { type: 'string' } });
+    expect(body.paths['/api/v1/test-fixture'].post.responses['201']).toBeDefined();
   });
 
   it('wraps missing routes with the same request ID', async () => {

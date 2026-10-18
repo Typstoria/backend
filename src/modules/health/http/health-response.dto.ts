@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class LiveHealthDto {
-  @ApiProperty({ enum: ['ok'], example: 'ok' })
+  /** API process status. */
   status!: 'ok';
 
   @ApiProperty({ format: 'date-time' })
@@ -9,11 +9,10 @@ export class LiveHealthDto {
 }
 
 export class DatabaseCheckDto {
-  @ApiProperty({ enum: ['up'], example: 'up' })
+  /** PostgreSQL connection status. */
   database!: 'up';
 }
 
 export class ReadyHealthDto extends LiveHealthDto {
-  @ApiProperty({ type: DatabaseCheckDto })
   checks!: DatabaseCheckDto;
 }

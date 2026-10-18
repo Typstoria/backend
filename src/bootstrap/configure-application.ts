@@ -1,10 +1,11 @@
-import { RequestMethod, ValidationPipe } from '@nestjs/common';
+import { ValidationPipe } from '@nestjs/common';
 import type { INestApplication } from '@nestjs/common';
 import { json, urlencoded } from 'express';
 import helmet from 'helmet';
 import { HttpExceptionFilter } from '../common/errors/http-exception.filter';
 import { requestContext } from '../common/http/request-context';
 import { AppConfigService } from '../config/app-config.service';
+import { configureApiRoutes } from './configure-api-routes';
 import { setupSwagger } from './swagger';
 
 export function configureApplication(app: INestApplication): void {
@@ -19,12 +20,7 @@ export function configureApplication(app: INestApplication): void {
     credentials: true,
     exposedHeaders: ['X-Request-Id'],
   });
-  app.setGlobalPrefix('api/v1', {
-    exclude: [
-      { path: 'health/live', method: RequestMethod.GET },
-      { path: 'health/ready', method: RequestMethod.GET },
-    ],
-  });
+  configureApiRoutes(app);
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,

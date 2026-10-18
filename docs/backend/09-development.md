@@ -24,7 +24,7 @@ Node 24.15+ потрібний у тому числі інструментам N
 2. Use case/service — у `application`; правила станів/actor — у `domain`, коли з'явиться реальна потреба.
 3. TypeORM entities та adapters — у `infrastructure/persistence` конкретного модуля.
 4. Нові entities явно додати до `createDatabaseOptions`, а repositories зареєструвати через `TypeOrmModule.forFeature` у модулі-власнику. Спільний список entities використовує також CLI міграцій.
-5. Для REST додати Swagger DTO/decorators і реальні success/error schemas. Не повертати TypeORM entity напряму: доменні password/credential fields не мають стати частиною API.
+5. Для REST використати класи `*.dto.ts`, явні return types контролерів та JSDoc-коментарі. Swagger compiler plugin автоматично додає базові schema/response metadata; додаткові error codes, security і специфічні формати описуються декораторами. Не повертати TypeORM entity напряму: доменні password/credential fields не мають стати частиною API.
 6. Application service приймає перевіреного actor. MCP adapter у майбутньому викликає ту саму логіку, але policy забороняє йому direct write/accept.
 
 Не використовувати TypeORM global repository/manager усередині transaction callback: всі пов'язані записи виконуються через переданий transactional manager/query runner. Optimistic concurrency для project revisions реалізувати умовним update/row lock у тій самій транзакції, а не лише decorator `VersionColumn`.
@@ -43,8 +43,16 @@ Readiness виконує `SELECT 1`, а не підтверджує готовн
 
 Integration suite створює унікальний тестовий запис і видаляє тільки його; не очищає всі таблиці. Для регулярної розробки рекомендована окрема test database із власним DATABASE_URL; у CI вона окрема. Credentials не треба вставляти в командах, які потраплять до shared logs.
 
-Перед merge: `npm ci`, `npm run check`, `npm run migration:run`, `npm run test:integration`, `npm run openapi:export`. Усі компоненти CI, крім PostgreSQL service, запускаються без контейнерів.
+Перед merge: `npm ci`, `npm run check`, `npm run migration:run`, `npm run test:integration`. `check` виконує build, а postbuild автоматично записує `openapi.json` без доступу до БД. Окрема команда `npm run openapi:export` запускає ту саму збірку для ручного експорту. Усі компоненти CI, крім PostgreSQL service, запускаються без контейнерів.
 
-## 6. Наступні задачі
+## 6. Code-first OpenAPI
+
+Налаштування compiler plugin живуть у `nest-cli.json`: лише `*.dto.ts`, `classValidatorShim`, `introspectComments`. Jest використовує ті самі options через `test/swagger-transformer.cjs`, щоб тести бачили ті самі схеми, що й реальна збірка. Типи entities не переносяться автоматично до API.
+
+`createOpenApiDocument` є спільним для Swagger UI, `/docs-json` і файлового експорту. Глобальний API prefix та health exclusions теж задаються однією функцією `configureApiRoutes`. Exporter читає справжній AppModule у Nest preview mode: не викликає конструктори providers, lifecycle hooks, TypeORM initialize або HTTP listen. Лише в окремому процесі exporter за відсутності DATABASE_URL задається placeholder URL для валідації конфігурації; production bootstrap не має такого fallback.
+
+Звичайний `tsc` або `ts-node` не запускає compiler plugin: для production/dev потрібні команди Nest CLI, а для Jest налаштовано AST transformer. Після зміни plugin options перезапусти watch-процес; чиста збірка очищає dist.
+
+## 7. Наступні задачі
 
 Перший наступний інкремент — Identity: нормалізація email, hashing, sessions, verify/reset challenges, CSRF та rate limits. Потім snapshots/files/outbox і ownership. Scope і залежності залишаються у файлі 07; цей каркас не закриває дослідницькі spikes MCP/OAuth/Typst/Tinymist.

@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "nest build",
+    "postbuild": "node dist/cli/export-openapi.js",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
@@ -34,7 +35,7 @@
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/infrastructure/database/data-source.ts",
     "migration:show": "typeorm-ts-node-commonjs migration:show -d src/infrastructure/database/data-source.ts",
     "migration:run:prod": "typeorm migration:run -d dist/infrastructure/database/data-source.js",
-    "openapi:export": "npm run build && node dist/cli/export-openapi.js"
+    "openapi:export": "npm run build"
   },
   "dependencies": {
     "@nestjs/common": "12.1.3",

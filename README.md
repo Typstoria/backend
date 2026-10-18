@@ -25,6 +25,17 @@ npm run start:dev
 
 API має префікс `/api/v1`; health і документація доступні без нього. Swagger показує лише фактично реалізовані endpoints. `SWAGGER_ENABLED=false` вимикає UI та JSON; без явного налаштування вони вимкнені у production.
 
+## Автоматична специфікація Swagger
+
+Специфікація генерується з контролерів, TypeScript DTO, JSDoc-коментарів і декораторів `class-validator` через `@nestjs/swagger` compiler plugin у `nest-cli.json`.
+
+- `npm run build` автоматично створює `openapi.json` у корені через `postbuild`. Експорт працює без підключення до PostgreSQL та без запуску HTTP-сервера: Nest preview mode читає метадані програми, не створюючи providers.
+- Під час `npm run start:dev` після зміни коду сервер перезапускається, а `/docs` і `/docs-json` відображають актуальну специфікацію. Файл на диску оновлюється під час build.
+- `npm run openapi:export` явно запускає ту саму збірку з експортом; окрему специфікацію вручну підтримувати не потрібно.
+- CI збирає та публікує `openapi.json` як artifact. Файл залишається у `.gitignore`.
+
+DTO мають бути класами у файлах `*.dto.ts`, методи контролерів — мати явний тип відповіді. Plugin визначає поля, required/optional, масиви, вкладені DTO та доступні обмеження валідаторів. `@ApiProperty` потрібний лише для уточнень, які не випливають із типу, наприклад date-time format; додаткові коди помилок і security описуються окремими Swagger-декораторами. Entities автоматично не документуються. Runtime-валідація і надалі потребує `class-validator`.
+
 ## Команди
 
 | Команда                                            | Призначення                                                       |
@@ -38,7 +49,7 @@ API має префікс `/api/v1`; health і документація дост
 | `npm run migration:run:prod`                       | Міграції зі скомпільованої збірки                                 |
 | `npm run check`                                    | Форматування, lint, typecheck, unit/HTTP tests, build             |
 | `npm run test:integration`                         | Реальні PostgreSQL-тести; потрібна БД із застосованими міграціями |
-| `npm run openapi:export`                           | Записати актуальний `openapi.json`; потрібна доступна БД          |
+| `npm run openapi:export`                           | Зібрати код і записати `openapi.json` без підключення до БД       |
 
 ### Міграції TypeORM
 
