@@ -81,12 +81,12 @@ describe('HTTP foundation', () => {
     expect(schema.required).toEqual(['title']);
     expect(schema.properties.title).toMatchObject({ type: 'string', maxLength: 20 });
     expect(schema.properties.labels).toMatchObject({ type: 'array', items: { type: 'string' } });
-    expect(body.paths['/api/v1/test-fixture'].post.responses['201']).toBeDefined();
+    expect(body.paths['/api/test-fixture'].post.responses['201']).toBeDefined();
   });
 
   it('wraps missing routes with the same request ID', async () => {
     const result = await request(app.getHttpServer())
-      .get('/api/v1/missing')
+      .get('/api/missing')
       .set('X-Request-Id', 'missing-route-test')
       .expect(404);
     expect(result.body.error).toMatchObject({
@@ -97,7 +97,7 @@ describe('HTTP foundation', () => {
 
   it('validates DTOs and rejects unexpected fields', async () => {
     const result = await request(app.getHttpServer())
-      .post('/api/v1/test-fixture')
+      .post('/api/test-fixture')
       .send({ title: 'valid', ownerId: 'forged-owner' })
       .expect(400);
     expect(result.body.error.code).toBe('VALIDATION_FAILED');
@@ -106,7 +106,7 @@ describe('HTTP foundation', () => {
 
   it('handles malformed JSON without exposing parser internals', async () => {
     const result = await request(app.getHttpServer())
-      .post('/api/v1/test-fixture')
+      .post('/api/test-fixture')
       .set('Content-Type', 'application/json')
       .send('{"title":')
       .expect(400);
@@ -116,7 +116,7 @@ describe('HTTP foundation', () => {
 
   it('rejects oversized bodies', async () => {
     const result = await request(app.getHttpServer())
-      .post('/api/v1/test-fixture')
+      .post('/api/test-fixture')
       .send({ title: 'x'.repeat(1024 * 1024) })
       .expect(413);
     expect(result.body.error.code).toBe('PAYLOAD_TOO_LARGE');

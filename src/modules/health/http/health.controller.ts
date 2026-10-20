@@ -3,8 +3,12 @@ import { ApiServiceUnavailableResponse, ApiTags } from '@nestjs/swagger';
 import { ErrorResponseDto } from '../../../common/errors/error-response.dto';
 import { HealthService } from '../application/health.service';
 import { LiveHealthDto, ReadyHealthDto } from './health-response.dto';
+import { Public } from '../../identity/http/auth-policy';
+import { SkipThrottle } from '@nestjs/throttler';
 
 @ApiTags('Health')
+@Public()
+@SkipThrottle()
 @Controller('health')
 export class HealthController {
   constructor(private readonly health: HealthService) {}

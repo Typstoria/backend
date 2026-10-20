@@ -1,16 +1,16 @@
 /** Populated by authentication adapters, never directly from a request body. */
 export interface UserActor {
-  userId: string;
+  userId: number;
   channel: 'web' | 'mcp';
-  credentialId: string;
+  credentialId: number;
   scopes: readonly string[];
   /** null means explicitly granted access to all projects owned by this user. */
-  projectIds: readonly string[] | null;
+  projectIds: readonly number[] | null;
 }
 
 export interface SystemActor {
   channel: 'system';
-  jobId: string;
+  jobId: number;
 }
 
 export type Actor = UserActor | SystemActor;

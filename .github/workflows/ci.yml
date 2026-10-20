@@ -28,6 +28,10 @@ jobs:
       NODE_ENV: test
       DATABASE_URL: postgresql://typstoria:integration_only@127.0.0.1:5432/typstoria_test
       SWAGGER_ENABLED: 'true'
+      # Test placeholders; integration overrides the mailer and transport tests mock fetch.
+      MAIL_FROM: tests@example.test
+      MAILJET_API_KEY: test-only-api-key
+      MAILJET_SECRET_KEY: test-only-secret-key
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

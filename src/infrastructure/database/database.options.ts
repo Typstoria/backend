@@ -2,12 +2,14 @@ import { join } from 'node:path';
 import type { DataSourceOptions } from 'typeorm';
 import type { Environment } from '../../config/environment';
 import { User } from '../../modules/identity/infrastructure/persistence/entities/user.entity';
+import { WebSession } from '../../modules/identity/infrastructure/persistence/entities/web-session.entity';
+import { IdentityChallenge } from '../../modules/identity/infrastructure/persistence/entities/identity-challenge.entity';
 
 export function createDatabaseOptions(environment: Environment): DataSourceOptions {
   return {
     type: 'postgres',
     url: environment.DATABASE_URL,
-    entities: [User],
+    entities: [User, WebSession, IdentityChallenge],
     migrations: [join(__dirname, 'migrations', '*{.ts,.js}')],
     migrationsTableName: 'typeorm_migrations',
     migrationsTransactionMode: 'all',
@@ -15,7 +17,6 @@ export function createDatabaseOptions(environment: Environment): DataSourceOptio
     migrationsRun: false,
     dropSchema: false,
     logging: false,
-    uuidExtension: 'pgcrypto',
     installExtensions: false,
     connectTimeoutMS: environment.DATABASE_CONNECT_TIMEOUT_MS,
     invalidWhereValuesBehavior: { null: 'throw', undefined: 'throw' },

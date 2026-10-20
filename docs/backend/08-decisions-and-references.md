@@ -1,6 +1,6 @@
 # Рішення, питання та джерела
 
-Статус: журнал v0.1 від 18.10.2026. Тут відокремлено відповіді користувача, запропоновану архітектуру та результати дослідження прототипу.
+Статус: журнал v0.1 від 20.10.2026. Тут відокремлено відповіді користувача, запропоновану архітектуру та результати дослідження прототипу.
 
 ## 1. Погоджено користувачем
 
@@ -16,6 +16,16 @@
 | U08 | TypeORM замість Prisma                                        | Entities, repositories та явні міграції; synchronize вимкнений у всіх середовищах                                    |
 | U09 | Для локального запуску тільки БД у контейнері                 | Compose містить лише PostgreSQL, API та інші процеси запускаються на host                                            |
 | U10 | Потрібен Swagger                                              | UI `/docs`, JSON `/docs-json`, DTO і schemas фактичних endpoints                                                     |
+
+| U11 | Mailjet для підтвердження пошти та відновлення пароля | Send API v3.1 у всіх середовищах, ключі в environment, без локального збереження листів |
+
+| U12 | Один Bearer access token без refresh/cookies | Login повертає accessToken, приватні запити передають Authorization header; CSRF-токен та anonymous cookie прибрано |
+
+| U13 | Числові ID сутностей | PostgreSQL integer auto-increment; JSON number; окрема міграція наявних UUID зі збереженням зв’язків |
+
+| U14 | Обов’язкове підтвердження пошти до входу; повторний лист раз на 5 хвилин | Register автоматично надсилає лист, login до verify повертає 403 без токена; verify/reset не авторизують, reset не підтверджує пошту |
+
+| U15 | Вхід через Google; підтвердження Google достатньо без додаткового листа | Google Identity Services, server-side ID token verification; один Bearer Typstoria; Google Client ID налаштовується окремо |
 
 Відповіді U02/U05 змінюють пріоритети вихідного бачення: один файл і пряме внесення ШІ-змін не є достатньою фінальною версією. Вихідні TXT не редагувалися, їхні початкові формулювання збережено для простежуваності.
 
@@ -33,7 +43,7 @@
 | A06 | S3-compatible private storage                        | Відокремлення байтів від домену; local filesystem adapter лише для dev                                 | Upload failure, orphan GC, authorized download              |
 | A07 | Офіційний MCP TypeScript SDK v2 як вихідний кандидат | Поточна stable лінія реалізує редакцію 2026-07-28; v1 розглядається лише для перевіреної сумісності    | Pin exact release і перевірити потрібні clients/protocols   |
 | A08 | OAuth provider library; кандидат oidc-provider       | Підтримувані протокольні механізми замість власної реалізації                                          | MCP discovery/resource/consent/PKCE/revocation spike        |
-| A09 | Серверна вебсесія замість JWT у localStorage         | Непрозорі credentials і просте revocation для браузера                                                 | CSRF/session rotation/logout/reset tests                    |
+| A09 | Один непрозорий Bearer-токен із серверним записом    | Непрозорі credentials і просте revocation для браузера                                                 | Bearer/expiry/logout/reset tests                            |
 | A10 | Isolated per-job Typst runner                        | Недовірений текст і ресурсоємні обчислення; root flag не забезпечує OS isolation                       | Filesystem/network/timeout/memory tests                     |
 | A11 | Tinymist для редактора                               | Готовий language service; власний parser/LSP надто великий окремий проєкт                              | Completion/format/position/outline/session isolation        |
 | A12 | GitHub App для backup                                | Окремі обмежені installation permissions; не змішувати з MCP OAuth                                     | Repo selection/token refresh/push conflict/revocation       |

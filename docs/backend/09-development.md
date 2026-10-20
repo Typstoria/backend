@@ -10,11 +10,11 @@
 - Global validation, CORS allowlist, Helmet, request ID, JSON logs, error envelope.
 - Unit/HTTP tests, окремий PostgreSQL integration suite, lint/typecheck/build і GitHub Actions.
 
-Реєстрації/входу, project CRUD, MCP transport, OAuth, runner, Git, queue та storage adapters ще немає. Порожні модулі не вважаються реалізацією відповідних вимог.
+Identity реалізований: реєстрація/вхід, Bearer access token без refresh/cookies, sessions, verify/reset через Mailjet, rate limits; див. [10-authentication.md](10-authentication.md). Project CRUD, MCP transport, OAuth, runner, Git, queue та storage adapters ще немає. Порожні модулі не вважаються реалізацією відповідних вимог.
 
 ## 2. Середовище
 
-Єдиний Compose service — `db`. API запускається через npm на host. Поточний старт не потребує Redis, S3 або SMTP. Майбутній локальний режим цих компонентів також має виконувати правило користувача: Docker використовується лише для БД.
+Єдиний Compose service — `db`. API запускається через npm на host. Поточний старт не потребує Redis, S3 або SMTP-сервера; Mailjet API credentials і підтверджений відправник обов’язкові також локально. Майбутній локальний режим цих компонентів також має виконувати правило користувача: Docker використовується лише для БД.
 
 Node 24.15+ потрібний у тому числі інструментам Nest CLI; `npm ci` відтворює lockfile. `.env` не комітиться. Початкові DB credentials у `.env.example` призначені тільки для development.
 
@@ -33,7 +33,7 @@ Node 24.15+ потрібний у тому числі інструментам N
 
 `synchronize=false`, `migrationsRun=false`, `dropSchema=false` зафіксовані в коді. `migration:generate` вимагає застосованих попередніх міграцій і доступної БД; згенерований SQL перевіряється вручну. Міграції комітяться разом з entities. Production runner використовує `dist/.../data-source.js` після build.
 
-Первинний UUID генерує PostgreSQL через вбудований `gen_random_uuid()`, без встановлення extensions від імені API. Дати — `timestamptz`; email uniqueness задає DB index по normalizedEmail. Нормалізацію email та password hashing потрібно реалізувати в Identity use cases, перш ніж відкривати auth endpoints.
+Первинні ключі — автоінкрементні PostgreSQL `integer`; TypeScript і JSON використовують `number`. Зовнішні ключі мають той самий тип. Параметри ID перевіряються до SQL як числа в діапазоні 1–2147483647. Дати — `timestamptz`; email uniqueness задає DB index по normalizedEmail. Identity нормалізує email через trim/lowercase, хешує паролі Argon2id і видає один непрозорий Bearer-токен на login; його хеш та строк дії зберігаються в серверній сесії.
 
 Readiness виконує `SELECT 1`, а не підтверджує готовність ще не реалізованих інтеграцій. TypeORM встановлює initial connection під час startup; якщо БД недоступна від самого початку, API завершує старт з помилкою. Після успішного старту liveness не звертається до БД, readiness повертає 503 при втраті підключення.
 
@@ -49,10 +49,10 @@ Integration suite створює унікальний тестовий запи�
 
 Налаштування compiler plugin живуть у `nest-cli.json`: лише `*.dto.ts`, `classValidatorShim`, `introspectComments`. Jest використовує ті самі options через `test/swagger-transformer.cjs`, щоб тести бачили ті самі схеми, що й реальна збірка. Типи entities не переносяться автоматично до API.
 
-`createOpenApiDocument` є спільним для Swagger UI, `/docs-json` і файлового експорту. Глобальний API prefix та health exclusions теж задаються однією функцією `configureApiRoutes`. Exporter читає справжній AppModule у Nest preview mode: не викликає конструктори providers, lifecycle hooks, TypeORM initialize або HTTP listen. Лише в окремому процесі exporter за відсутності DATABASE_URL задається placeholder URL для валідації конфігурації; production bootstrap не має такого fallback.
+`createOpenApiDocument` є спільним для Swagger UI, `/docs-json` і файлового експорту. Глобальний API prefix та health exclusions теж задаються однією функцією `configureApiRoutes`. Exporter читає справжній AppModule у Nest preview mode: не викликає конструктори providers, lifecycle hooks, TypeORM initialize або HTTP listen. Лише в окремому процесі exporter за відсутності DATABASE_URL задається placeholder URL, а режим metadata export використовує test і фіктивні mail credentials без створення providers або надсилання листів; production bootstrap не має такого fallback.
 
 Звичайний `tsc` або `ts-node` не запускає compiler plugin: для production/dev потрібні команди Nest CLI, а для Jest налаштовано AST transformer. Після зміни plugin options перезапусти watch-процес; чиста збірка очищає dist.
 
 ## 7. Наступні задачі
 
-Перший наступний інкремент — Identity: нормалізація email, hashing, sessions, verify/reset challenges, CSRF та rate limits. Потім snapshots/files/outbox і ownership. Scope і залежності залишаються у файлі 07; цей каркас не закриває дослідницькі spikes MCP/OAuth/Typst/Tinymist.
+Identity реалізований; наступний інкремент — snapshots/files/outbox і ownership. Scope і залежності залишаються у файлі 07; цей каркас не закриває дослідницькі spikes MCP/OAuth/Typst/Tinymist.

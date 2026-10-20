@@ -6,10 +6,8 @@ import request from 'supertest';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../../src/app.module';
 import { configureApplication } from '../../src/bootstrap/configure-application';
-import {
-  User,
-  UserStatus,
-} from '../../src/modules/identity/infrastructure/persistence/entities/user.entity';
+import { SessionService } from '../../src/modules/identity/application/session.service';
+import { User } from '../../src/modules/identity/infrastructure/persistence/entities/user.entity';
 
 describe('PostgreSQL integration (run migrations first)', () => {
   let app: INestApplication;
@@ -43,8 +41,16 @@ describe('PostgreSQL integration (run migrations first)', () => {
     });
 
     const user = await users.findOneByOrFail({ normalizedEmail: email });
-    expect(user.id).toMatch(/^[0-9a-f-]{36}$/);
-    expect(user.status).toBe(UserStatus.Active);
+    expect(typeof user.id).toBe('number');
+    expect(Number.isInteger(user.id)).toBe(true);
+    expect(user.id).toBeGreaterThan(0);
+    expect(user).not.toHaveProperty('status');
+    const runner = database.createQueryRunner();
+    try {
+      expect(await runner.hasColumn('users', 'status')).toBe(false);
+    } finally {
+      await runner.release();
+    }
     expect(user.passwordHash).toBeUndefined();
     expect(user.createdAt).toBeInstanceOf(Date);
 
@@ -56,5 +62,18 @@ describe('PostgreSQL integration (run migrations first)', () => {
   it('serves readiness using the real database connection', async () => {
     const result = await request(app.getHttpServer()).get('/health/ready').expect(200);
     expect(result.body.checks.database).toBe('up');
+  });
+
+  it('does not resolve sessions for health checks, even when a Bearer header is present', async () => {
+    const resolve = jest.spyOn(app.get(SessionService), 'resolve');
+    try {
+      await request(app.getHttpServer())
+        .get('/health/live')
+        .auth(`1.${'a'.repeat(43)}`, { type: 'bearer' })
+        .expect(200);
+      expect(resolve).not.toHaveBeenCalled();
+    } finally {
+      resolve.mockRestore();
+    }
   });
 });

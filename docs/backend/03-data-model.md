@@ -10,10 +10,12 @@
 
 ## 2. Сутності
 
+Первинні та зовнішні ключі сутностей — додатні PostgreSQL `integer` з автоінкрементом для PK; в API це JSON numbers. Git hashes, OAuth client identifiers, requestId і випадкові секрети токенів залишаються рядками.
+
 | Сутність                   | Основні поля та призначення                                                                                                                                                                 |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| User                       | UUID, normalizedEmail unique, passwordHash, emailVerifiedAt, status, timestamps                                                                                                             |
-| WebSession                 | userId, хеш випадкового session secret, expiresAt, revokedAt; серверна сесія                                                                                                                |
+| User                       | id integer auto-increment, normalizedEmail unique, passwordHash nullable (Google-only), googleSubject nullable unique, emailVerifiedAt, authVersion, timestamps                             |
+| WebSession                 | userId, хеш випадкового session secret, authVersion, userAgent, expiresAt, revokedAt; серверна сесія                                                                                        |
 | IdentityChallenge          | userId, kind verify/reset, tokenHash, expiresAt, consumedAt                                                                                                                                 |
 | PersonalAccessToken        | userId, publicId, secretHash, name, scopes, expiresAt, revokedAt, lastUsedAt                                                                                                                |
 | CredentialProjectGrant     | PAT/OAuth grant → дозволені projectId; загальний доступ до всіх проєктів лише за явним вибором                                                                                              |
@@ -70,7 +72,7 @@ erDiagram
 
 ## 4. Обмеження та індекси
 
-- UUID не замінює authorization. Кожен lookup вкладеного ресурсу перевіряє його зв'язок із projectId і власником.
+- Числовий ID не замінює authorization. Кожен lookup вкладеного ресурсу перевіряє його зв'язок із projectId і власником.
 - Unique `(projectId, number)` для прийнятих ревізій; unique `(snapshotId, normalizedPath)` та `(snapshotId, fileId)`.
 - `mainFileId` належить до того самого snapshot і вказує на `.typ`. Видалити головний файл можна лише разом із вибором нового entrypoint у тій самій транзакції.
 - `parentRevisionId`, candidate, annotation file, матеріали й proposal не можуть посилатися на інший проєкт. Де можливо — composite foreign keys; решта перевіряється транзакційно і тестами.

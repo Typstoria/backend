@@ -1,6 +1,6 @@
 # Typstoria — серверна частина
 
-Реалізовано початковий каркас **NestJS + TypeORM + PostgreSQL**: модулі предметних областей, конфігурацію, міграції, health endpoints, Swagger/OpenAPI, обробку помилок, request ID, тести та CI. Бізнес-сценарії авторизації, документів, MCP, компіляції та review ще не реалізовані. Документація нижче описує цільову систему.
+Реалізовано початковий каркас **NestJS + TypeORM + PostgreSQL**: модулі предметних областей, конфігурацію, міграції, health endpoints, Swagger/OpenAPI, обробку помилок, request ID, тести та CI. Реалізовано також реєстрацію, вхід/вихід, один Bearer access token без refresh/cookies, керування активними входами, підтвердження пошти й відновлення пароля через Mailjet та rate limits. Сценарії документів, MCP, компіляції та review ще не реалізовані. Документація нижче описує цільову систему.
 
 ## Локальний запуск
 
@@ -10,6 +10,7 @@
 nvm install
 nvm use
 cp .env.example .env
+# Заповни MAIL_FROM, MAILJET_API_KEY та MAILJET_SECRET_KEY у .env.
 npm ci
 npm run db:up
 npm run migration:run
@@ -23,7 +24,23 @@ npm run start:dev
 - Liveness: [http://127.0.0.1:3000/health/live](http://127.0.0.1:3000/health/live).
 - Readiness з перевіркою БД: [http://127.0.0.1:3000/health/ready](http://127.0.0.1:3000/health/ready).
 
-API має префікс `/api/v1`; health і документація доступні без нього. Swagger показує лише фактично реалізовані endpoints. `SWAGGER_ENABLED=false` вимикає UI та JSON; без явного налаштування вони вимкнені у production.
+API має префікс `/api`; health і документація доступні без нього. Swagger показує лише фактично реалізовані endpoints. `SWAGGER_ENABLED=false` вимикає UI та JSON; без явного налаштування вони вимкнені у production.
+
+## Авторизація та Mailjet
+
+`/api/auth`: `register`, `login`, `me`, `logout`, `resend-verification`, `verify-email`, `forgot-password`, `reset-password`. Керування сесіями через окремі API-маршрути відсутнє. Приватні маршрути за замовчуванням потребують підтвердженої пошти.
+
+Пошта надсилається виключно через Mailjet, зокрема під час локальної розробки. Перед запуском заповни `MAIL_FROM`, `MAILJET_API_KEY`, `MAILJET_SECRET_KEY` у `.env`; відправник має бути підтверджений у Mailjet. `PUBLIC_WEB_URL` — адреса фронтенду для посилань. Без цих трьох налаштувань API не стартує. Листи на диск не записуються; додаткових контейнерів немає.
+
+Після реєстрації автоматично надсилається лист підтвердження. До підтвердження login повертає 403 `EMAIL_NOT_VERIFIED` без токена; приватні функції недоступні. Повторний лист — раз на 5 хвилин. Підтвердження пошти та reset самі по собі не авторизують.
+
+У Swagger після підтвердження пошти виконай `POST /api/auth/login`, скопіюй `accessToken` із відповіді в **Authorize → bearer** (без слова `Bearer`). Приватні запити надсилатимуть `Authorization: Bearer <accessToken>`. Cookies, окремого CSRF-токена та refresh-токена немає. Строк дії задається `AUTH_ACCESS_TOKEN_TTL_SECONDS` (типово 7 днів); після закінчення потрібен новий вхід. Logout відкликає токен у БД. Деталі — у [10-authentication.md](docs/backend/10-authentication.md).
+
+## Вхід через Google
+
+`POST /api/auth/google` приймає JSON `{idToken}` від Google Identity Services і повертає звичайний токен Typstoria. Новий Google-користувач має підтверджену пошту без додаткового листа. Для наявного локального акаунта передбачене явне прив’язування через `POST /api/auth/google/link` після звичайного входу. Google-only акаунти не мають локального пароля; відновлення доступу відбувається через Google.
+
+Потрібен `GOOGLE_CLIENT_ID` типу Web application; Client Secret не використовується. Без Client ID Google-вхід вимкнений, решта API працює. Налаштування Google Cloud та контракт фронтенду: [11-google-sign-in.md](docs/backend/11-google-sign-in.md).
 
 ## Автоматична специфікація Swagger
 
@@ -53,7 +70,7 @@ DTO мають бути класами у файлах `*.dto.ts`, методи 
 
 ### Міграції TypeORM
 
-`synchronize` і автоматичний запуск міграцій вимкнені в усіх середовищах. Початкова міграція створює таблицю `users`; наявність entity не означає готового auth API. Звичайні читання entity виключають `passwordHash`.
+`synchronize` і автоматичний запуск міграцій вимкнені в усіх середовищах. Міграції створюють `users`, `web_sessions` та `identity_challenges` із числовими автоінкрементними ID. Наявні UUID-записи переносяться окремою міграцією зі збереженням зв’язків; старі сесії відкликаються, потрібен повторний вхід. Звичайні читання виключають password/token/secret hashes.
 
 ```bash
 # Після зміни entities: перевір SQL перед застосуванням.
@@ -75,7 +92,7 @@ API і CLI використовують спільні database options. `null`/
 
 Змінні оточення перевіряються до старту: порт, PostgreSQL URL, явні boolean, точні CORS origins, pool/timeouts. Production потребує власних credentials; локальні приклади для нього не підходять. Зміна `POSTGRES_*` після першого створення volume не змінює вже наявного користувача/пароля в PostgreSQL — використовуй SQL-міграцію налаштувань або нову локальну БД, зберігши потрібні дані.
 
-Redis, S3, SMTP, Typst і Tinymist не є залежностями поточного старту. Їхні adapters і workers додаються у відповідних інкрементах. Локальна вимога зберігається: за потреби вони запускаються на host, а не додаються до Compose.
+Redis, S3, Typst і Tinymist не є залежностями поточного старту. Їхні adapters і workers додаються у відповідних інкрементах. Локальна вимога зберігається: за потреби вони запускаються на host, а не додаються до Compose.
 
 ## Структура
 
@@ -85,9 +102,10 @@ src/
   config/                    # typed config і перевірка environment
   common/{actor,errors,http}/
   infrastructure/database/   # TypeORM options, CLI DataSource, migrations
+  infrastructure/mail/       # Mailjet Send API
   modules/
     health/                  # реалізований HTTP/application flow
-    identity/                # User entity та repository registration
+    identity/                # Bearer auth, sessions, verify/reset workflows
     access/ projects/ files/ revisions/ history/
     compilation/ proposals/ context/ annotations/
     templates/ editor/ transfer/ backup/ mcp/ jobs/ audit/
@@ -113,6 +131,7 @@ compose.yaml                 # лише PostgreSQL
 | [06-security-and-operations.md](docs/backend/06-security-and-operations.md)   | Ізоляція компіляції, безпека, запуск, резервні копії           |
 | [07-delivery-plan.md](docs/backend/07-delivery-plan.md)                       | Послідовність робіт, залежності, перевірки, критерії приймання |
 | [08-decisions-and-references.md](docs/backend/08-decisions-and-references.md) | Рішення, відкриті питання, аналіз SmartTeX, офіційні джерела   |
+| [10-authentication.md](docs/backend/10-authentication.md)                     | Реалізована авторизація, Mailjet, Bearer flow, обмеження       |
 | [09-development.md](docs/backend/09-development.md)                           | Реалізований каркас, локальний запуск і правила розвитку       |
 
 Рекомендований порядок читання: 01 → 02 → 04 → 07, потім деталізація моделі та API. Реєстр у файлі 08 відокремлює погоджені рішення від запропонованих технічних деталей.

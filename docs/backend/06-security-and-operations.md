@@ -15,11 +15,11 @@
 - Паролі хешуються Argon2id через підтримувану бібліотеку; параметри підбираються вимірюванням на сервері. Готовий hash не повертається через DTO.
 - Реєстрація, login, resend і forgot password мають rate limit та загальні відповіді, які не розкривають існування email.
 - Verify/reset challenge випадковий, одноразовий, з hash у БД і expiry. Використання позначається атомарно. Reset не входить у систему автоматично.
-- Запропонована політика: до email verification можна лише підтверджувати адресу, повторно отримувати лист і виходити; проєкти, PAT та OAuth consent доступні після verification.
-- Вебсесії з HttpOnly/Secure cookie, SameSite, CSRF та rotation після login. Logout відкликає конкретну сесію; reset password відкликає попередні sessions та OAuth refresh grants. PAT можна відкликати окремо або всі разом.
+- Запропонована політика: до email verification доступні підтвердження адреси, повторне надсилання, власний профіль, керування власними сесіями та вихід; проєкти, PAT та OAuth consent доступні після verification.
+- Веб використовує один непрозорий Bearer access token через Authorization header, без auth cookies, CSRF-токена та refresh-токена. Logout відкликає поточний токен; reset password відкликає всі web sessions. Для майбутнього MCP OAuth також потрібно відкликання refresh grants. PAT можна відкликати окремо або всі разом.
 - PAT секрет показується один раз. SHA-256/HMAC для випадкового secret з високою ентропією допустимий; password hashing для нього не потрібен. Порівняння секретів constant time.
 - OAuth provider використовує production adapter у PostgreSQL, ротацію signing keys, перевірку audience, redirect URI, PKCE та refresh reuse. In-memory demo provider не підходить.
-- GitHub App private key, SMTP secret, signing keys і storage credentials — тільки secrets environment/secret store. GitHub access token отримує worker; його немає в проєктному Git config або backup archive.
+- GitHub App private key, Mailjet API keys, signing keys і storage credentials — тільки secrets environment/secret store. GitHub access token отримує worker; його немає в проєктному Git config або backup archive.
 - Відкликання перевіряється на кожній новій операції. Для вже запущеної задачі також перевіряється актуальний дозвіл перед публікацією; приватний артефакт завжди читається з повторною authorization.
 
 ## 3. Ізоляція компіляції
@@ -76,7 +76,7 @@ LSP/Tinymist і парсери context materials також обробляють
 
 ## 6. Запуск
 
-Для development Docker Compose запускає лише PostgreSQL. API, майбутні workers, Redis, storage і поштовий adapter запускаються на host; вони не додаються до локального Compose. Початковий каркас не потребує Redis, storage чи пошти для старту. Для майбутньої локальної компіляції потрібен OS sandbox без Docker; його конкретний механізм перевіряється на P0. Container runner вище описує production-варіант і не змінює локальне правило «лише БД у контейнері».
+Для development Docker Compose запускає лише PostgreSQL. API, майбутні workers, Redis, storage і поштовий adapter запускаються на host; вони не додаються до локального Compose. API не потребує Redis чи storage для старту; Mailjet API credentials та підтверджений відправник потрібні в усіх середовищах. Для майбутньої локальної компіляції потрібен OS sandbox без Docker; його конкретний механізм перевіряється на P0. Container runner вище описує production-варіант і не змінює локальне правило «лише БД у контейнері».
 
 Для першого production deployment достатньо одного host із розділеними процесами й persistent volumes; масштабування до кількох host не є передумовою першої поставки. Підбір CPU/RAM робиться за load test, включно з Tinymist і extraction.
 

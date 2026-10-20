@@ -21,18 +21,18 @@ flowchart LR
 
 ## 2. Інкременти та вихідні результати
 
-| Етап                      | Роботи                                                                                                                                                     | Залежності         | Критерій виходу                                                                                         |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------- |
-| P0 — ризики               | Мінімальні окремі spikes: Typst sandbox; NestJS+MCP SDK; OAuth consent/PKCE; Tinymist; Git mapping/retry; storage transaction boundary                     | Рішення з файлу 08 | Є результати, exact versions і приклади запуску; ризики SDK/OAuth/sandbox не залишилися припущеннями    |
-| P1 — основа               | NestJS strict, config validation, TypeORM migrations, PostgreSQL, logs/error format, health, CI, sessions, register/login/logout, verify/reset email, CSRF | P0                 | Чисте середовище піднімається за інструкцією; auth lifecycle працює через test mailbox                  |
-| P2 — домен                | Project, stable file IDs, blobs, accepted revisions, context text, entrypoint, atomic changes, outbox, ownership, concurrency/idempotency                  | P1                 | Два конкурентні saves не втрачають текст; multi-file revision атомарна; між користувачами немає доступу |
-| P3 — compile/history      | BullMQ, CompileJob, runner, artifacts/diagnostics, fingerprints; bare Git repos, writer/reconciler, history/diff/restore                                   | P2                 | Багатофайловий Typst→PDF; старий job не стає поточним; restart не губить jobs/Git mapping               |
-| P4 — review               | Proposals/candidates, validation, multi-file diff, accept/reject, stale/rebase, явне прийняття compile failure                                             | P3                 | ШІ-правки не змінюють currentRevision до web acceptance; повтор accept дає ту саму ревізію              |
-| P5 — зовнішні клієнти     | MCP read/search/propose/compile/resources, PAT, OAuth provider adapter/discovery/PKCE/consent, scopes/project grants/revocation                            | P4; spike уже у P0 | Повний сценарій у реальному MCP-клієнті; revoked credential не працює; MCP не приймає власну правку     |
-| P6 — контекст/annotations | Material revisions, PDF/text/CSV/XLSX extraction, search chunks/provenance; annotation anchors/status/reanchor; MCP tools для них                          | P2, P4, P5         | Заміна матеріалу версійна; матеріал не потрапляє у PDF автоматично; rename/restore не губить коментар   |
-| P7 — templates/transfer   | System fixtures, власні TemplateVersion, shares/revocation/copy; ZIP import/export і профілі manifest                                                      | P2, P3, P6         | Незалежна копія шаблону; чужий share не відкриває оригінал; ZIP round trip і негативні архіви           |
-| P8 — editor/backup        | Tinymist sessions/proxy, diagnostics/completion/format/definitions, outline, quick preview; GitHub App і односторонній backup                              | P3, P5, P6         | Редакторні сценарії у фронтенді; snapshot backup перевірений; remote conflict не перезаписаний          |
-| P9 — release              | Повна інтеграція, isolation/load/failure tests, retention/GC, docs, deploy, backups/restore drill, MCP client matrix                                       | P1–P8              | F01–F19/N01–N06 закриті доказами й сценаріями демонстрації                                              |
+| Етап                      | Роботи                                                                                                                                                            | Залежності         | Критерій виходу                                                                                         |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------- |
+| P0 — ризики               | Мінімальні окремі spikes: Typst sandbox; NestJS+MCP SDK; OAuth consent/PKCE; Tinymist; Git mapping/retry; storage transaction boundary                            | Рішення з файлу 08 | Є результати, exact versions і приклади запуску; ризики SDK/OAuth/sandbox не залишилися припущеннями    |
+| P1 — основа               | NestJS strict, config validation, TypeORM migrations, PostgreSQL, logs/error format, health, CI, sessions, register/login/logout, verify/reset email, Bearer auth | P0                 | Чисте середовище піднімається за інструкцією; auth lifecycle працює через Mailjet                       |
+| P2 — домен                | Project, stable file IDs, blobs, accepted revisions, context text, entrypoint, atomic changes, outbox, ownership, concurrency/idempotency                         | P1                 | Два конкурентні saves не втрачають текст; multi-file revision атомарна; між користувачами немає доступу |
+| P3 — compile/history      | BullMQ, CompileJob, runner, artifacts/diagnostics, fingerprints; bare Git repos, writer/reconciler, history/diff/restore                                          | P2                 | Багатофайловий Typst→PDF; старий job не стає поточним; restart не губить jobs/Git mapping               |
+| P4 — review               | Proposals/candidates, validation, multi-file diff, accept/reject, stale/rebase, явне прийняття compile failure                                                    | P3                 | ШІ-правки не змінюють currentRevision до web acceptance; повтор accept дає ту саму ревізію              |
+| P5 — зовнішні клієнти     | MCP read/search/propose/compile/resources, PAT, OAuth provider adapter/discovery/PKCE/consent, scopes/project grants/revocation                                   | P4; spike уже у P0 | Повний сценарій у реальному MCP-клієнті; revoked credential не працює; MCP не приймає власну правку     |
+| P6 — контекст/annotations | Material revisions, PDF/text/CSV/XLSX extraction, search chunks/provenance; annotation anchors/status/reanchor; MCP tools для них                                 | P2, P4, P5         | Заміна матеріалу версійна; матеріал не потрапляє у PDF автоматично; rename/restore не губить коментар   |
+| P7 — templates/transfer   | System fixtures, власні TemplateVersion, shares/revocation/copy; ZIP import/export і профілі manifest                                                             | P2, P3, P6         | Незалежна копія шаблону; чужий share не відкриває оригінал; ZIP round trip і негативні архіви           |
+| P8 — editor/backup        | Tinymist sessions/proxy, diagnostics/completion/format/definitions, outline, quick preview; GitHub App і односторонній backup                                     | P3, P5, P6         | Редакторні сценарії у фронтенді; snapshot backup перевірений; remote conflict не перезаписаний          |
+| P9 — release              | Повна інтеграція, isolation/load/failure tests, retention/GC, docs, deploy, backups/restore drill, MCP client matrix                                              | P1–P8              | F01–F19/N01–N06 закриті доказами й сценаріями демонстрації                                              |
 
 P0 не є прототипом усієї системи: кожен spike перевіряє конкретну невизначеність і закінчується коротким ADR. Його демонстраційний код не переноситься без перегляду до production.
 
@@ -44,7 +44,7 @@ P0 не є прототипом усієї системи: кожен spike пе
 
 ## 4. Координація з фронтендом
 
-- На P1 погодити auth/cookie/CSRF й формат помилок.
+- На P1 перевірити Bearer auth без cookies/refresh й формат помилок.
 - На P2 видати OpenAPI: tree, revision, atomic save/conflict. Frontend зберігає local draft при conflict.
 - На P3 погодити CompileJob, diagnostics positions, artifactAvailable/isCurrent та SSE reconnect.
 - На P4 погодити review екран і окрему дію прийняття помилкового Typst.
@@ -59,7 +59,7 @@ P0 не є прототипом усієї системи: кожен spike пе
 
 | ID тестів | Що перевіряємо                                                                                                                 | Вимоги             |
 | --------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------ |
-| T01       | Register/verify/login/logout/reset, expiry/reuse challenge, session revocation, CSRF                                           | F01, N04           |
+| T01       | Register/verify/login/logout/reset, expiry/reuse challenge, token revocation, Bearer-only authentication                       | F01, N04           |
 | T02       | Два користувачі, усі вкладені IDs, artifacts, LSP, SSE, shares, jobs, proposals                                                | F02, F06, F19, N04 |
 | T03       | Save/reopen, атомарний batch, invalid paths/entrypoint, lost response/retry, concurrent base revision                          | F02, F08, N01, N05 |
 | T04       | Успішний multi-file compile, syntax error, timeout/OOM/output limit, missing package, Ukrainian fonts                          | F05, F08, N02, N04 |

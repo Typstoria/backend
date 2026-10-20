@@ -1,18 +1,18 @@
 # Контракти REST, MCP та подій
 
-Статус: проєктні контракти v0.1. Реалізація має опублікувати OpenAPI для REST та JSON Schema для MCP. Приклади нижче пояснюють поведінку й не є реалізованими endpoints.
+Статус: проєктні контракти v0.1. Реалізація має опублікувати OpenAPI для REST та JSON Schema для MCP. Приклади нижче пояснюють цільову поведінку. Фактично реалізовані Identity endpoints описано у [10-authentication.md](10-authentication.md) і автоматичному OpenAPI; решта прикладів поки не реалізована.
 
 ## 1. Спільні правила
 
-- REST prefix `/api/v1`; JSON camelCase; ідентифікатори UUID; дати ISO 8601 UTC.
-- У прикладах нижче UUID скорочені до зрозумілих підписів; реальні schema прийматимуть UUID.
+- REST prefix `/api`; JSON camelCase; ідентифікатори сутностей — додатні цілі числа (int32); дати ISO 8601 UTC.
+- У концептуальних прикладах нижче сутності іноді позначені зрозумілими підписами; реальний API приймає та повертає їхні числові ID.
 - Ліміти body, рядків, pagination і типів перевіряються DTO/schema до application service.
 - Mutation основного документа вимагає `baseRevisionId`; proposal — також expectedProposalVersion. Зміна title вимагає expectedMetadataVersion; анотації — expectedAnnotationVersion.
 - Для create, save batch, accept, restore, compile, import/export і backup використовується `Idempotency-Key`. У MCP відповідний аргумент `idempotencyKey`. Ключ обмежений actor/credential, операцією та payload hash; повтор з іншим payload → `409 IDEMPOTENCY_CONFLICT`.
 - Перевірка idempotency виконується перед повторною перевіркою baseRevision, але після перевірки чинності actor й доступу. Повтор успішної операції не маскує відкликані credentials.
 - Списки мають cursor pagination, default 20/max 100. Пошук і читання тексту підтримують обмежені chunks.
 - Приватний чужий або видалений ресурс → 404 без розкриття існування. Немає автентифікації → 401; недостатньо scope до власного ресурсу → 403.
-- Спочатку HTTP/WS/SSE authentication, потім application authorization. UUID й секрет share link не є загальним правом на довільний resource.
+- Спочатку HTTP/WS/SSE authentication, потім application authorization. ID ресурсу й секрет share link не є загальним правом на довільний resource.
 
 Формат REST-помилки:
 
@@ -33,8 +33,7 @@
 
 | Область          | Запропоновані маршрути                                                                                                                                        |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Auth             | `GET /auth/csrf`, `POST /auth/register`, `/login`, `/logout`, `/email/verify`, `/email/resend`, `/password/forgot`, `/password/reset`, `GET /auth/me`         |
-| Sessions         | `GET /sessions`, `DELETE /sessions/:id`                                                                                                                       |
+| Auth             | `POST /auth/register`, `/login`, `/logout`, `/verify-email`, `/resend-verification`, `/forgot-password`, `/reset-password`, `GET /auth/me`                    |
 | PAT              | `GET/POST /access/tokens`, `DELETE /access/tokens/:id`                                                                                                        |
 | OAuth grants     | `GET /access/connections`, `DELETE /access/connections/:id`                                                                                                   |
 | Projects         | `GET/POST /projects`, `GET/PATCH/DELETE /projects/:p`                                                                                                         |
@@ -157,7 +156,7 @@ PDF доступний як protected HTTPS endpoint і MCP resource `typstoria:
 
 ## 6. Автентифікація та OAuth
 
-Веб: серверна HttpOnly/Secure cookie-сесія, CSRF для mutations, включно з login, exact allowed origins. Зміна пароля відкликає інші sessions та refresh families за визначеною політикою.
+Веб: один непрозорий Bearer access token у Authorization header, серверний запис у PostgreSQL для expiry/revocation, без auth cookies і refresh-токена. Exact allowed origins для фронтенду. Скидання пароля відкликає всі поточні web access tokens; майбутній MCP OAuth має також відкликати відповідні refresh families.
 
 PAT: `Authorization: Bearer <secret>`, випадковий secret із public ID, у БД hash. Дозволені scopes/проєкти обирає користувач; read-only профіль не має propose чи compile:run. PAT призначений для клієнтів із налаштуванням bearer header й не замінює універсальний OAuth flow.
 

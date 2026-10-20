@@ -13,11 +13,11 @@ export function configureApplication(app: INestApplication): void {
 
   app.use(requestContext);
   app.use(helmet());
+  app.enableCsrfProtection({ trustedOrigins: config.corsOrigins });
   app.use(json({ limit: '1mb' }));
   app.use(urlencoded({ extended: false, limit: '1mb' }));
   app.enableCors({
     origin: config.corsOrigins,
-    credentials: true,
     exposedHeaders: ['X-Request-Id'],
   });
   configureApiRoutes(app);

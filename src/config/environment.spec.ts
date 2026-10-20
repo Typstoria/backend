@@ -1,6 +1,11 @@
 import { validateEnvironment } from './environment';
 
-const base = { DATABASE_URL: 'postgresql://user:secret@127.0.0.1:5432/typstoria' };
+const base = {
+  DATABASE_URL: 'postgresql://user:secret@127.0.0.1:5432/typstoria',
+  MAIL_FROM: 'sender@example.test',
+  MAILJET_API_KEY: 'test-key',
+  MAILJET_SECRET_KEY: 'test-secret',
+};
 
 describe('environment validation', () => {
   it('parses port, explicit booleans and multiple CORS origins', () => {
@@ -19,10 +24,40 @@ describe('environment validation', () => {
   });
 
   it('disables Swagger by default in production', () => {
-    expect(validateEnvironment({ ...base, NODE_ENV: 'production' }).SWAGGER_ENABLED).toBe(false);
+    expect(
+      validateEnvironment({
+        ...base,
+        NODE_ENV: 'production',
+        MAIL_FROM: 'no-reply@example.test',
+        MAILJET_API_KEY: 'test-key',
+        MAILJET_SECRET_KEY: 'test-secret',
+        PUBLIC_WEB_URL: 'https://typstoria.example',
+      }).SWAGGER_ENABLED,
+    ).toBe(false);
+  });
+
+  it('allows Google sign-in to be disabled or configured with a Web client ID', () => {
+    expect(validateEnvironment(base).GOOGLE_CLIENT_ID).toBeUndefined();
+    expect(
+      validateEnvironment({ ...base, GOOGLE_CLIENT_ID: '   ' }).GOOGLE_CLIENT_ID,
+    ).toBeUndefined();
+    expect(
+      validateEnvironment({ ...base, GOOGLE_CLIENT_ID: 'test-client.apps.googleusercontent.com' })
+        .GOOGLE_CLIENT_ID,
+    ).toBe('test-client.apps.googleusercontent.com');
   });
 
   it.each([
+    { GOOGLE_CLIENT_ID: 'not-a-google-client' },
+    { MAIL_FROM: undefined },
+    { MAIL_FROM: 'invalid' },
+    { MAILJET_API_KEY: undefined },
+    { MAILJET_SECRET_KEY: undefined },
+    { MAILJET_API_KEY: '   ' },
+    { MAILJET_SECRET_KEY: '' },
+    { NODE_ENV: 'production' },
+    { AUTH_ACCESS_TOKEN_TTL_SECONDS: '0' },
+    { PUBLIC_WEB_URL: 'https://example.com/path' },
     { PORT: '0' },
     { PORT: 'invalid' },
     { SWAGGER_ENABLED: 'yes' },
@@ -38,7 +73,7 @@ describe('environment validation', () => {
   });
 
   it('does not expose secret values in validation errors', () => {
-    expect(() => validateEnvironment({ DATABASE_URL: 'invalid-private-secret' })).toThrow(
+    expect(() => validateEnvironment({ ...base, DATABASE_URL: 'invalid-private-secret' })).toThrow(
       /^Invalid environment variables: DATABASE_URL$/,
     );
   });

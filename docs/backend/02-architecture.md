@@ -43,8 +43,8 @@ MCP — окремий транспорт і набір схем усереди�
 | Редактор | Tinymist як зовнішній LSP-процес                         | Completion, format, symbols, definitions; ізоляція та обмеження життєвого циклу                            |
 | MCP      | Офіційний TypeScript SDK v2                              | Streamable HTTP, tools/resources, OAuth-сумісність; exact release та client matrix зафіксувати після spike |
 | OAuth    | Готова серверна бібліотека; кандидат `oidc-provider`     | Не реалізовувати протокол вручну; перевірити MCP discovery, resource та PKCE                               |
-| Вебсесії | Непрозора cookie-сесія, запис у PostgreSQL               | Відкликання й контроль сеансів; окремо від MCP credentials                                                 |
-| Пошта    | SMTP adapter, локально тестовий mailbox                  | Підтвердження email та reset password                                                                      |
+| Вебсесії | Один непрозорий Bearer access token, запис у PostgreSQL  | Відкликання й контроль сеансів; окремо від MCP credentials                                                 |
+| Пошта    | Mailjet Send API v3.1 у всіх середовищах                 | Підтвердження email та reset password                                                                      |
 | Тести    | Unit + API integration + real Typst/Git + MCP client     | Перевірки контрактів і життєвих циклів, а не лише mock-компілятора                                         |
 
 NestJS офіційно підтримує BullMQ; Redis є його залежністю. Обраний підхід до черг спирається на [документацію NestJS](https://docs.nestjs.com/techniques/queues). Механізми транзакцій та перевірки версій описані в [TypeORM](https://typeorm.io/docs/advanced-topics/transactions/); конкретні інваріанти визначає наша модель, а не ORM.
