@@ -1,12 +1,14 @@
 # Модель даних та узгодженість
 
-Статус: проєктна модель v0.1. Назви сутностей описують домен і ще не є готовою TypeORM-моделлю.
+Статус: проєктна модель v0.1. Identity та сутності початкового проєкту вже реалізовані в TypeORM; поточний сценарій описано у [12-project-creation.md](12-project-creation.md). Атомарні saves та staged uploads реалізовані; див. [13-atomic-text-changes.md](13-atomic-text-changes.md) і [14-resource-uploads.md](14-resource-uploads.md). Решта таблиці нижче описує цільовий домен і не означає наявності готових entities або API.
+
+Поточний CompileJob зберігає також одне PDF blob-посилання з expiry та діагностику. Окрема CompileArtifact таблиця поки не потрібна для одного PDF; поля proposal/candidate нижче залишаються цільовими. Див. [15-compilation.md](15-compilation.md).
 
 ## 1. Основний принцип
 
 У PostgreSQL зберігаються власність, доступи, поточна ревізія, незмінні маніфести та метадані. Байти файлів зберігаються у приватному storage як незмінні blobs. Git-коміти відтворюють послідовність прийнятих ревізій. Worker ніколи не читає спільну змінювану робочу папку проєкту.
 
-Одна ревізія охоплює дерево файлів документа, entrypoint, текстовий контекст і версії контекстних матеріалів. Коментарі та їхній стан живуть окремо; їхня прив'язка містить конкретну ревізію. Зміна назви проєкту не створює нову версію документа, але використовує власний `metadataVersion`.
+Одна ревізія охоплює дерево файлів документа, entrypoint, текстовий контекст і версії контекстних матеріалів. Коментарі та їхній стан живуть окремо; їхня прив'язка містить конкретну ревізію. Зміна назви проєкту не створює нову версію документа; для title діє last-write-wins.
 
 ## 2. Сутності
 
@@ -21,12 +23,13 @@
 | CredentialProjectGrant     | PAT/OAuth grant → дозволені projectId; загальний доступ до всіх проєктів лише за явним вибором                                                                                              |
 | OAuthClient / OAuthGrant   | client metadata, user, scopes, project grants, timestamps, revokedAt                                                                                                                        |
 | OAuth provider storage     | Codes, tokens, refresh families і consent через adapter бібліотеки; секрети не в довільних JSON-логах                                                                                       |
-| Project                    | id, ownerId, title, currentRevisionId, nextRevisionNumber, metadataVersion, deletedAt                                                                                                       |
+| Project                    | id, ownerId, title, currentRevisionId, nextRevisionNumber, deletedAt                                                                                                                        |
 | FileIdentity               | id, projectId, createdAt; сталий ID логічного файла через перейменування                                                                                                                    |
 | Blob                       | id, tenant ownerId, storageKey, sha256, sizeBytes, mediaType, createdAt                                                                                                                     |
+| StagedUpload               | id, projectId, ownerId, blobId, filename, mediaType, expiresAt; повторно придатний reference                                                                                                |
 | ProjectSnapshot            | id, projectId, mainFileId, contextText, manifestHash, createdAt; незмінний стан вмісту                                                                                                      |
 | ProjectRevision            | id, projectId, number, parentRevisionId, snapshotId, actorId, channel, operation, summary, createdAt; прийнята версія                                                                       |
-| SnapshotFile               | snapshotId, fileId, normalizedPath, blobId, contentKind; дерево файлів документа                                                                                                            |
+| SnapshotFile               | snapshotId, fileId, normalizedPath, blobId, contentKind, mediaType; дерево файлів документа                                                                                                 |
 | ContextMaterial            | сталий ID матеріалу та projectId                                                                                                                                                            |
 | SnapshotMaterial           | snapshotId, materialId, filename, blobId, description; версія прикріпленого джерела                                                                                                         |
 | MaterialExtraction         | blobId, parserFingerprint, status, text/index object key, error; повторно використовуваний витяг                                                                                            |
@@ -43,7 +46,6 @@
 | BackupConnection           | ownerId, GitHub installationId, repo ID, branch, includeContext, enabled                                                                                                                    |
 | BackupRun                  | connectionId, projectId, revisionId, exported manifestHash, remoteCommitSha, status, errorCode                                                                                              |
 | TransferJob                | import/export, userId, projectId?, input/output blob, status, validation report                                                                                                             |
-| OutboxEvent                | eventId unique, aggregateId, kind, payload IDs, attempts, availableAt, publishedAt                                                                                                          |
 | IdempotencyRecord          | actor credential/session family, route/tool, key, payloadHash, status, result pointer, expiresAt                                                                                            |
 | AuditEvent                 | actor, credential ID, projectId?, action, targetId, requestId, outcome, timestamp                                                                                                           |
 
@@ -77,7 +79,7 @@ erDiagram
 - `mainFileId` належить до того самого snapshot і вказує на `.typ`. Видалити головний файл можна лише разом із вибором нового entrypoint у тій самій транзакції.
 - `parentRevisionId`, candidate, annotation file, матеріали й proposal не можуть посилатися на інший проєкт. Де можливо — composite foreign keys; решта перевіряється транзакційно і тестами.
 - Стан accepted вимагає `acceptedRevisionId`. Terminal CompileJob більше не змінює свої входи.
-- Індекси: Project `(ownerId, deletedAt, updatedAt)`; Revision `(projectId, number)`; Proposal `(projectId, status, createdAt)`; CompileJob `(projectId, createdAt)`, `(status, leaseUntil)`; Outbox `(publishedAt, availableAt)`; Audit `(projectId, createdAt)`.
+- Індекси: Project `(ownerId, deletedAt, updatedAt)`; Revision `(projectId, number)`; Proposal `(projectId, status, createdAt)`; CompileJob `(projectId, createdAt)`, `(status, leaseUntil)`; Audit `(projectId, createdAt)`.
 - Дати у БД — UTC; зовнішній формат ISO 8601. Текст — UTF-8; довжини/ліміти файлів у байтах.
 - Нормалізація email визначається одним правилом для реєстрації й входу. Case-insensitive uniqueness перевіряється в БД.
 
@@ -89,7 +91,7 @@ erDiagram
 2. Блокує рядок Project або виконує compare-and-swap `currentRevisionId = baseRevisionId`.
 3. Перевіряє шлях, типи, entrypoint, квоти та цілісність усього нового маніфесту.
 4. Створює snapshot, зв'язки blobs та номер прийнятої версії.
-5. Оновлює `currentRevisionId`, створює audit та outbox-події для Git/outline/reanchor/backup.
+5. Оновлює `currentRevisionId`, створює audit та pending Git mappings.
 6. Commit повертає нову ревізію. Якщо база вже змінилася — `409 REVISION_CONFLICT`, жодна операція набору не застосована.
 
 Blobs завантажуються до зміни currentRevision: БД не має посилатися на ще не записані байти. Після невдалої транзакції staging blobs прибере GC. Дедуплікація tenant scoped; API не розкриває, чи існує чужий hash.
@@ -97,6 +99,8 @@ Blobs завантажуються до зміни currentRevision: БД не м
 Читання дерева, контексту та матеріалів приймає revisionId: MCP може читати послідовно, не змішуючи стани. Draft LSP містить ще не збережений текст і не змінює currentRevision.
 
 ## 6. Git без розподіленої транзакції
+
+Цей сценарій реалізований: [16-git-history.md](16-git-history.md). Mapping має revision ID як PK, статус/commit/parent SHA, attempts, availableAt, lease token/expiry та безпечний error code.
 
 На кожен проєкт — приватний bare repository. Git writer обробляє прийняті ревізії послідовно. Усередині commit є дерево документів і службовий manifest: сталі file IDs, entrypoint, контекст та матеріали. Користувач не може створити зарезервований шлях `.typstoria/` чи `.git/`.
 
@@ -107,7 +111,7 @@ Blobs завантажуються до зміни currentRevision: БД не м
 3. Оновити Git ref із перевіркою попереднього значення через `git update-ref`; поведінку визначає [документація Git](https://git-scm.com/docs/git-update-ref).
 4. Записати mapping ready. Якщо процес упав після Git commit/ref, повтор знаходить той самий commit і дописує mapping.
 
-Стан Git відображається окремо: `pending|ready|failed`. Невдалий Git writer не скасовує вже підтверджене збереження в PostgreSQL. Повторний writer/reconciler добудовує історію; API не повідомляє про успішний backup до завершення push. Поки mapping pending, diff можна отримати зі snapshot, явно повернувши `historySyncStatus`.
+Стан Git відображається окремо: `pending|ready|failed`. Невдалий Git writer не скасовує вже підтверджене збереження в PostgreSQL. Повторний writer/maintenance добудовує історію; API не повідомляє про успішний backup до завершення push. Поки mapping pending, diff можна отримати зі snapshot, явно повернувши `historySyncStatus`.
 
 Git refs — проєкція; вони не визначають currentRevision всупереч БД. Відновлення ніколи не робить `reset --hard`: воно копіює обраний snapshot у нову прийняту ревізію.
 
@@ -115,7 +119,7 @@ Git refs — проєкція; вони не визначають currentRevisio
 
 Вхід компіляції визначається впорядкованим маніфестом **усіх файлів дерева документа**, entrypoint, хешем runner image, версіями Typst, пакетів, шрифтів і контрольованим значенням часу. Контекстні матеріали й анотації не монтуються в runner і не входять до compile hash.
 
-`inputManifestHash` обчислюється з цих входів. `isCurrent` визначається порівнянням із поточними compile inputs, а не лише номером версії: редагування контексту не робить PDF застарілим. Зміна будь-якого ресурсу документа робить його застарілим консервативно, навіть якщо ресурс не використаний.
+У поточній реалізації `inputManifestHash` є повним snapshot hash, включно з context. `isCurrent` консервативно порівнює revision IDs: context-only зміна також позначає старий PDF неактуальним. Окремий compile-input cache/hash protocol зараз не вводиться.
 
 Незбережений текст у редакторі — окрема ознака frontend `hasUnsavedChanges`; сервер не може заявляти відповідність такому тексту. Draft preview повертає draftVersion, а не статус authoritative compilation.
 

@@ -40,8 +40,6 @@ export class SessionGuard implements CanActivate {
         userId: request.identity.user.id,
         channel: 'web',
         credentialId: request.identity.session.id,
-        scopes: [],
-        projectIds: null,
       };
     }
     if (policy === 'verified' && !request.identity.user.emailVerifiedAt) {

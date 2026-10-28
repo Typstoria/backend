@@ -10,7 +10,7 @@ module.exports = {
   setupFiles: ['<rootDir>/test/setup-env.cjs'],
   roots: ['<rootDir>/src', '<rootDir>/test'],
   testMatch: ['**/*.spec.ts'],
-  testPathIgnorePatterns: ['/node_modules/', '/test/integration/'],
+  testPathIgnorePatterns: ['/node_modules/', '/test/integration/', '/test/compiler/'],
   clearMocks: true,
   collectCoverageFrom: ['src/**/*.ts', '!src/main.ts', '!src/cli/**', '!**/*.spec.ts'],
   coverageDirectory: 'coverage',

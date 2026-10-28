@@ -72,11 +72,13 @@ LSP/Tinymist і парсери context materials також обробляють
 | Proposal batch                 | До 200 операцій у межах project quotas                       |
 | LSP                            | До 2 sessions на користувача, idle timeout 10 хвилин         |
 
+Реалізований ресурсний staging має TTL 24 години та квоти unexpired references: 400/256 MiB на owner, включно з прикріпленими. Формати, перевірки й поведінка expiry описані у [14-resource-uploads.md](14-resource-uploads.md). Поточний snapshot обмежений 500 файлами та 64 MiB включно з текстовим контекстом; context materials ще не реалізовані.
+
 До публічного запуску додаються квоти загальної історії/кандидатів/артефактів на користувача, queued jobs і запитів за інтервал. Обсяг поточного snapshot сам по собі не стримує необмежений ріст історії.
 
 ## 6. Запуск
 
-Для development Docker Compose запускає лише PostgreSQL. API, майбутні workers, Redis, storage і поштовий adapter запускаються на host; вони не додаються до локального Compose. API не потребує Redis чи storage для старту; Mailjet API credentials та підтверджений відправник потрібні в усіх середовищах. Для майбутньої локальної компіляції потрібен OS sandbox без Docker; його конкретний механізм перевіряється на P0. Container runner вище описує production-варіант і не змінює локальне правило «лише БД у контейнері».
+Для development Docker Compose запускає лише PostgreSQL. API, workers, storage і поштовий adapter запускаються на host; вони не додаються до локального Compose. API не потребує Redis чи storage для старту; Mailjet API credentials та підтверджений відправник потрібні в усіх середовищах. Для майбутньої локальної компіляції потрібен OS sandbox без Docker; локально вже перевірено Bubblewrap + systemd user cgroups; конфігурація та межі — у [15-compilation.md](15-compilation.md). Production provisioning залишається окремим acceptance кроком. Container runner вище описує production-варіант і не змінює локальне правило «лише БД у контейнері».
 
 Для першого production deployment достатньо одного host із розділеними процесами й persistent volumes; масштабування до кількох host не є передумовою першої поставки. Підбір CPU/RAM робиться за load test, включно з Tinymist і extraction.
 
@@ -88,15 +90,11 @@ LSP/Tinymist і парсери context materials також обробляють
 4. Оновити API/workers, перевірити readiness та smoke scenarios.
 5. Перевірити TLS, email links, OAuth issuer/resource URLs, MCP routing і SSE/WS proxy settings.
 
-Публічно доступні тільки reverse proxy ports. PostgreSQL, Redis, storage admin та runner не експонуються. Secrets не зберігаються у Git. `.env.example` містить лише назви та безпечні приклади.
+Публічно доступні тільки reverse proxy ports. PostgreSQL, storage admin та runner не експонуються. Secrets не зберігаються у Git. `.env.example` містить лише назви та безпечні приклади.
 
 ## 7. Черги та відновлення
 
-Outbox і доменний job створюються в одній транзакції. Dispatcher передає jobId у BullMQ з детермінованим job ID, але доменна ідемпотентність не залежить від того, чи зберіг Redis старий queue item. [BullMQ описує унікальність ID у межах queue](https://docs.bullmq.io/guide/jobs/job-ids); після видалення job ID може бути використаний знову.
-
-Leases/attempt tokens зберігаються в PostgreSQL. Reconciler знаходить unpublished outbox, jobs без heartbeat, Git mappings pending/failed, незавершені cleanup/backup. Кількість retries обмежена, exponential backoff із jitter; користувач бачить terminal status та дію retry.
-
-Compile, Git projection, material extraction і GitHub backup мають окремі queues, щоб великий PDF не зупиняв пошту чи історію. Повний Redis outage не втрачає accepted revisions; queued jobs залишаються у БД й будуть передані повторно.
+Pending job/mapping записується атомарно з доменною зміною. Worker читає due records із PostgreSQL, без Redis/outbox. Claim/leases/fencing забезпечують recovery і захист від застарілих спроб; retries обмежені. Compile/history мають окремі процеси. Ready repos не перевіряються постійно; після втрати storage запускається `history:rebuild`.
 
 ## 8. Спостережуваність
 

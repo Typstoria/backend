@@ -14,7 +14,6 @@ import {
   IdentityChallenge,
 } from '../infrastructure/persistence/entities/identity-challenge.entity';
 import { User } from '../infrastructure/persistence/entities/user.entity';
-import { WebSession } from '../infrastructure/persistence/entities/web-session.entity';
 import { SessionService } from './session.service';
 
 @Injectable()
@@ -163,11 +162,6 @@ export class IdentityService {
         IdentityChallenge,
         { userId: user.id, kind, consumedAt: IsNull() },
         { consumedAt: new Date() },
-      );
-      await manager.update(
-        WebSession,
-        { userId: user.id, revokedAt: IsNull() },
-        { revokedAt: new Date() },
       );
       return user.id;
     });

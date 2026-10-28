@@ -16,9 +16,7 @@ flowchart TD
   Auth --> Services
   Services --> DB[(PostgreSQL)]
   Services --> Objects[Приватне сховище об'єктів]
-  DB --> Outbox[Outbox dispatcher]
-  Outbox --> Queue[(Redis / BullMQ)]
-  Queue --> Workers[Compile / Git / extract / backup workers]
+  DB --> Workers[Compile / Git / extract / backup workers]
   Workers --> DB
   Workers --> Objects
   Workers --> Runner[Ізольований Typst runner]
@@ -36,7 +34,7 @@ MCP — окремий транспорт і набір схем усереди�
 | Runtime  | Підтримувана Node.js LTS, TypeScript strict              | Одна мова бекенду; точні версії зафіксувати на початку реалізації                                          |
 | API      | NestJS, початково Express adapter                        | Простіша інтеграція HTTP handler SDK, OpenAPI, guards; Fastify не потрібен без виміряної потреби           |
 | БД       | PostgreSQL + TypeORM                                     | Транзакції, міграції, типізований доступ; спеціальні блокування/constraints за потреби через SQL           |
-| Черги    | BullMQ + Redis                                           | Інтеграція NestJS та окремі workers; БД зберігає доменний стан задач                                       |
+| Черги    | PostgreSQL pending jobs                                  | Один durable стан роботи, окремі polling workers                                                           |
 | Файли    | Приватний S3-compatible storage                          | Незмінні blobs, PDF, архіви; локальний adapter допустимий для розробки                                     |
 | Git      | Встановлений Git CLI через `spawn` із масивом аргументів | Справжня Git-історія; контрольований wrapper без shell і користувацьких hooks                              |
 | Typst    | Зафіксований CLI у runner image                          | PDF з точних входів, явні шрифти й пакети                                                                  |
@@ -47,7 +45,7 @@ MCP — окремий транспорт і набір схем усереди�
 | Пошта    | Mailjet Send API v3.1 у всіх середовищах                 | Підтвердження email та reset password                                                                      |
 | Тести    | Unit + API integration + real Typst/Git + MCP client     | Перевірки контрактів і життєвих циклів, а не лише mock-компілятора                                         |
 
-NestJS офіційно підтримує BullMQ; Redis є його залежністю. Обраний підхід до черг спирається на [документацію NestJS](https://docs.nestjs.com/techniques/queues). Механізми транзакцій та перевірки версій описані в [TypeORM](https://typeorm.io/docs/advanced-topics/transactions/); конкретні інваріанти визначає наша модель, а не ORM.
+PostgreSQL polling із claim/lease/fencing забезпечує recovery без окремого message transport.
 
 ## 3. Модулі NestJS
 
@@ -68,7 +66,6 @@ NestJS офіційно підтримує BullMQ; Redis є його залеж�
 | TransferModule    | ZIP import/export, формат маніфесту                            |
 | BackupModule      | GitHub connection, односторонній push і журнал                 |
 | McpModule         | SDK handlers, schemas, resources; виклики application services |
-| JobsModule        | Outbox dispatcher, retries, reconciliation, cleanup            |
 | AuditModule       | Події без секретів і повного тексту приватних документів       |
 
 Кожен модуль має public services; прямий доступ одного контролера до таблиць іншого модуля заборонений архітектурною домовленістю. Не додаємо окремі абстракції для кожного поля або CRUD-запиту. Repository/adapter виділяється там, де є доменні правила чи зовнішня система.
@@ -118,8 +115,8 @@ docs/backend/
 1. Actor містить `userId`, канал `web|mcp|system`, credential/grant ID, scopes і project allowlist. `userId` не береться з тіла запиту.
 2. Сервіс перевіряє власність і дозволені операції навіть після transport guard.
 3. Mutation створює незмінну ревізію; job бачить її ID, а не «поточні файли на диску».
-4. PostgreSQL — джерело істини для поточного стану. Redis переносить роботу; Git є відновлюваною проєкцією історії, а blobs зберігають байти.
-5. Queue-повідомлення надсилаються через transactional outbox. Між БД, Redis, Git і storage немає спільної транзакції.
+4. PostgreSQL — джерело істини для поточного стану. Git є відновлюваною проєкцією історії, а blobs зберігають байти.
+5. Pending job/mapping створюється в транзакції з доменною зміною. Worker читає ці самі записи; між БД, Git і storage немає спільної транзакції.
 6. Зміни стану й повідомлення для фронтенду формуються після commit. SSE повідомляє про подію; повторний GET повертає актуальний стан.
 7. Обчислювальні операції, Git, ZIP і парсинг великих матеріалів не виконуються синхронно в HTTP request/event loop.
 
@@ -129,6 +126,6 @@ docs/backend/
 - Інтеграцію OAuth provider з NestJS та спільною вебсесією.
 - Runner: ізоляція мережі/файлів, примусовий timeout, контроль пам'яті, українські шрифти та контрольовані пакети.
 - Tinymist: LSP поверх браузерного каналу, зіставлення позицій, кілька одночасних sessions, обчислювані заголовки.
-- Узгодженість TypeORM-транзакції, outbox, Git writer та повторного прийняття proposal.
+- Узгодженість TypeORM-транзакції, pending mappings, Git writer та повторного прийняття proposal.
 
 Якщо spike змінює бібліотеку або adapter, рішення записується у файлі 08 до початку залежної функції.

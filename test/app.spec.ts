@@ -13,7 +13,7 @@ describe('HTTP foundation', () => {
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({
-      imports: [ConfigurationModule, HealthModule],
+      imports: [ConfigurationModule.forRoot(), HealthModule],
       controllers: [ValidationFixtureController],
     })
       .useMocker((token) => (token === DataSource ? database : undefined))

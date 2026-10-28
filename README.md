@@ -1,6 +1,6 @@
 # Typstoria — серверна частина
 
-Реалізовано початковий каркас **NestJS + TypeORM + PostgreSQL**: модулі предметних областей, конфігурацію, міграції, health endpoints, Swagger/OpenAPI, обробку помилок, request ID, тести та CI. Реалізовано також реєстрацію, вхід/вихід, один Bearer access token без refresh/cookies, керування активними входами, підтвердження пошти й відновлення пароля через Mailjet та rate limits. Сценарії документів, MCP, компіляції та review ще не реалізовані. Документація нижче описує цільову систему.
+Реалізовано початковий каркас **NestJS + TypeORM + PostgreSQL**: модулі предметних областей, конфігурацію, міграції, health endpoints, Swagger/OpenAPI, обробку помилок, request ID, тести та CI. Реалізовано також реєстрацію, вхід/вихід, один Bearer access token без refresh/cookies, підтвердження пошти й відновлення пароля через Mailjet та rate limits. Перший сценарій P2 створює приватний проєкт із порожнім `main.typ` і ревізією №1 та дозволяє прочитати його стан, переглянути список власних проєктів, перейменувати або м’яко видалити проєкт. Працює також атомарне редагування текстових файлів і контексту з новою ревізією. Працюють staging uploads ресурсів, їх атомарне додавання/заміна та скачування з поточної або історичної ревізії. Асинхронна компіляція прийнятої ревізії в PDF через окремий worker і Linux sandbox також працює. Git writer, історія/diff ревізій та restore також працюють. MCP і review ще не реалізовані. Документація розрізняє реалізовані сценарії та цільову систему.
 
 ## Локальний запуск
 
@@ -41,6 +41,38 @@ API має префікс `/api`; health і документація досту�
 `POST /api/auth/google` приймає JSON `{idToken}` від Google Identity Services і повертає звичайний токен Typstoria. Новий Google-користувач має підтверджену пошту без додаткового листа. Для наявного локального акаунта передбачене явне прив’язування через `POST /api/auth/google/link` після звичайного входу. Google-only акаунти не мають локального пароля; відновлення доступу відбувається через Google.
 
 Потрібен `GOOGLE_CLIENT_ID` типу Web application; Client Secret не використовується. Без Client ID Google-вхід вимкнений, решта API працює. Налаштування Google Cloud та контракт фронтенду: [11-google-sign-in.md](docs/backend/11-google-sign-in.md).
+
+## Створення проєкту
+
+`POST /api/projects` приймає `{ "title": "Дипломна робота" }` і обов'язковий заголовок `Idempotency-Key`. Потрібен Bearer-токен підтвердженого користувача. Сервер атомарно створює проєкт, `main.typ`, знімок, ревізію №1, audit і pending Git mapping. Повтор із тим самим ключем у цій сесії повертає ті самі ID; інша назва — 409.
+
+Прочитати результат можна через `GET /api/projects/:id`, `/state` та `/files/:fileId?revisionId=…`. `GET /api/projects` повертає власні активні проєкти з cursor-пагінацією (типово 20, максимум 100, порядок `id DESC`). `PATCH /api/projects/:id` приймає `{ "title": "Нова назва" }`; останнє завершене перейменування перемагає та змінює лише метадані. `DELETE /api/projects/:id` повертає 204 і закриває доступ через `deletedAt`; фізичне очищення виконується пізніше.
+
+Байти зберігаються приватно на host у `BLOB_STORAGE_PATH` (типово `.local/blobs`); каталог не обслуговується через static HTTP. Git-проєкція асинхронна; її поточний статус доступний у revision history та `/state`. Контракти й інструкція перевірки — у [12-project-creation.md](docs/backend/12-project-creation.md).
+
+## Атомарне збереження тексту
+
+`POST /api/projects/:id/changes` приймає `baseRevisionId`, необов'язковий `summary` та масив типізованих операцій: `createFile`, `updateText`, `renameFile`, `deleteFile`, `setEntrypoint`, `updateContext`, `attachFile`, `replaceFile`. Обов'язковий `Idempotency-Key`. Зміни створюють одну ревізію або повністю відхиляються; save без зміни стану повертає поточну ревізію; stale base дає 409 `REVISION_CONFLICT`. Повтор успішного запиту повертає записану відповідь. `GET /api/projects/:id/state?revisionId=…` і читання файла дозволяють переглянути попередній стан.
+
+Міграція узагальнює `project_creations` до `idempotency_records` зі збереженням наявних create keys. Приклади, ліміти й семантика операцій — у [13-atomic-text-changes.md](docs/backend/13-atomic-text-changes.md).
+
+## Ресурси документа
+
+`POST /api/projects/:id/uploads` приймає один multipart `file` до 10 MiB без обов’язкового `Idempotency-Key`. Підтримуються PNG/JPEG/GIF/WebP/PDF та TTF/OTF/WOFF/WOFF2. Upload не змінює ревізію: використай отриманий `uploadId` в `attachFile` або `replaceFile` через `/changes`. Статус доступний через `GET /uploads/:uploadId`, скачування прикріпленого файла — через `GET /files/:fileId/download?revisionId=…` із Bearer-токеном.
+
+References доступні для повторного використання 24 години; до 400 unexpired uploads/256 MiB на owner, включно з прикріпленими; автоматичне очищення диска ще не реалізоване. Контракт і приклади — у [14-resource-uploads.md](docs/backend/14-resource-uploads.md).
+
+## Компіляція в PDF
+
+`POST /api/projects/:id/compilations` із `{ "revisionId": 1 }` без `Idempotency-Key` повертає 202 і job ID. `GET /compilations/:jobId` показує статус, diagnostics, `isCurrent` та `artifactAvailable`; `/compilations/:jobId/pdf` приватно віддає результат успішної задачі. Source не змінюється; старий PDF залишається прив'язаним до своєї ревізії.
+
+Потрібен окремий `npm run worker:compile:dev` (після build — `npm run worker:compile`). Задачі зберігаються в PostgreSQL і чекають worker при його недоступності. Локальний runner використовує Typst 0.14.2, Bubblewrap і systemd user cgroups; Docker залишається лише для БД. Задай `TYPST_BINARY_PATH` у `.env`. Зовнішні пакети `@preview/...` зараз недоступні; fonts із проєкту та embedded fonts підтримуються. Контракт, обмеження й перевірки — у [15-compilation.md](docs/backend/15-compilation.md).
+
+## Історія та відновлення
+
+`GET /api/projects/:id/revisions` повертає прийняті ревізії з cursor-пагінацією та Git status; `/revisions/:revisionId/diff?against=…` порівнює immutable snapshots за сталими file IDs. Text patches обмежені, binary має metadata/hashes. `POST /restore` з `targetRevisionId`, `expectedCurrentRevisionId` та `Idempotency-Key` створює нову ревізію з попереднім станом.
+
+Окремий `npm run worker:history:dev` (після build — `npm run worker:history`) обробляє pending mappings безпосередньо з PostgreSQL і пише приватні bare repos у `GIT_STORAGE_PATH` (типово `.local/history`). Git outage не скасовує saves; history/diff/restore читають PostgreSQL. Повтори writer відновлюють той самий commit SHA. Контракт, retry та перевірки — у [16-git-history.md](docs/backend/16-git-history.md).
 
 ## Автоматична специфікація Swagger
 
@@ -92,7 +124,7 @@ API і CLI використовують спільні database options. `null`/
 
 Змінні оточення перевіряються до старту: порт, PostgreSQL URL, явні boolean, точні CORS origins, pool/timeouts. Production потребує власних credentials; локальні приклади для нього не підходять. Зміна `POSTGRES_*` після першого створення volume не змінює вже наявного користувача/пароля в PostgreSQL — використовуй SQL-міграцію налаштувань або нову локальну БД, зберігши потрібні дані.
 
-Redis, S3, Typst і Tinymist не є залежностями поточного старту. Їхні adapters і workers додаються у відповідних інкрементах. Локальна вимога зберігається: за потреби вони запускаються на host, а не додаються до Compose.
+Redis, S3, Typst і Tinymist не є залежностями старту API. Для compile worker потрібні PostgreSQL і sandboxed Typst на host; Redis не використовується. Для source blobs уже працює приватний локальний storage. Решта adapters і workers додаються у відповідних інкрементах. Локальна вимога зберігається: за потреби вони запускаються на host, а не додаються до Compose.
 
 ## Структура
 
@@ -106,7 +138,9 @@ src/
   modules/
     health/                  # реалізований HTTP/application flow
     identity/                # Bearer auth, sessions, verify/reset workflows
-    access/ projects/ files/ revisions/ history/
+    projects/                # CRUD with soft delete, initial revision, ownership/idempotency
+    files/ revisions/        # private local blobs, stable IDs, immutable snapshots
+    access/ history/
     compilation/ proposals/ context/ annotations/
     templates/ editor/ transfer/ backup/ mcp/ jobs/ audit/
   cli/                       # OpenAPI export
@@ -121,18 +155,23 @@ compose.yaml                 # лише PostgreSQL
 
 ## Документація
 
-| Файл                                                                          | Що містить                                                     |
-| ----------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| [01-scope.md](docs/backend/01-scope.md)                                       | Межі продукту, вимоги, критерії завершеності                   |
-| [02-architecture.md](docs/backend/02-architecture.md)                         | Стек, модулі NestJS, взаємодія компонентів                     |
-| [03-data-model.md](docs/backend/03-data-model.md)                             | Сутності, версії, файли, Git, цілісність даних                 |
-| [04-workflows.md](docs/backend/04-workflows.md)                               | Збереження, компіляція, ШІ-пропозиції, відновлення, шаблони    |
-| [05-api-and-mcp.md](docs/backend/05-api-and-mcp.md)                           | Контракти REST, MCP, OAuth та повідомлень для фронтенду        |
-| [06-security-and-operations.md](docs/backend/06-security-and-operations.md)   | Ізоляція компіляції, безпека, запуск, резервні копії           |
-| [07-delivery-plan.md](docs/backend/07-delivery-plan.md)                       | Послідовність робіт, залежності, перевірки, критерії приймання |
-| [08-decisions-and-references.md](docs/backend/08-decisions-and-references.md) | Рішення, відкриті питання, аналіз SmartTeX, офіційні джерела   |
-| [10-authentication.md](docs/backend/10-authentication.md)                     | Реалізована авторизація, Mailjet, Bearer flow, обмеження       |
-| [09-development.md](docs/backend/09-development.md)                           | Реалізований каркас, локальний запуск і правила розвитку       |
+| Файл                                                                          | Що містить                                                      |
+| ----------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| [01-scope.md](docs/backend/01-scope.md)                                       | Межі продукту, вимоги, критерії завершеності                    |
+| [02-architecture.md](docs/backend/02-architecture.md)                         | Стек, модулі NestJS, взаємодія компонентів                      |
+| [03-data-model.md](docs/backend/03-data-model.md)                             | Сутності, версії, файли, Git, цілісність даних                  |
+| [04-workflows.md](docs/backend/04-workflows.md)                               | Збереження, компіляція, ШІ-пропозиції, відновлення, шаблони     |
+| [05-api-and-mcp.md](docs/backend/05-api-and-mcp.md)                           | Контракти REST, MCP, OAuth та повідомлень для фронтенду         |
+| [06-security-and-operations.md](docs/backend/06-security-and-operations.md)   | Ізоляція компіляції, безпека, запуск, резервні копії            |
+| [07-delivery-plan.md](docs/backend/07-delivery-plan.md)                       | Послідовність робіт, залежності, перевірки, критерії приймання  |
+| [08-decisions-and-references.md](docs/backend/08-decisions-and-references.md) | Рішення, відкриті питання, аналіз SmartTeX, офіційні джерела    |
+| [10-authentication.md](docs/backend/10-authentication.md)                     | Реалізована авторизація, Mailjet, Bearer flow, обмеження        |
+| [09-development.md](docs/backend/09-development.md)                           | Реалізований каркас, локальний запуск і правила розвитку        |
+| [12-project-creation.md](docs/backend/12-project-creation.md)                 | CRUD проєктів, початкова ревізія, storage та idempotency        |
+| [13-atomic-text-changes.md](docs/backend/13-atomic-text-changes.md)           | Атомарні текстові saves, конфлікти, квоти й історичне читання   |
+| [14-resource-uploads.md](docs/backend/14-resource-uploads.md)                 | Staging ресурсів, attach/replace, приватне історичне скачування |
+| [15-compilation.md](docs/backend/15-compilation.md)                           | PostgreSQL jobs, Linux sandbox, diagnostics та PDF              |
+| [16-git-history.md](docs/backend/16-git-history.md)                           | Приватна Git-проєкція, revisions/diff, restore, retry/recovery  |
 
 Рекомендований порядок читання: 01 → 02 → 04 → 07, потім деталізація моделі та API. Реєстр у файлі 08 відокремлює погоджені рішення від запропонованих технічних деталей.
 
@@ -144,3 +183,5 @@ compose.yaml                 # лише PostgreSQL
 - Прототип для дослідження: `/home/yehor/Downloads/SmartTeX-master/`.
 
 Вихідні документи використано як предметні матеріали. Їхні згадки про «мінімум», «перспективу» й можливі реалізації не замінюють подальших відповідей користувача. Після уточнення обидва етапи включено до обов'язкової поставки. Код SmartTeX не переносився.
+
+Оновлення схеми й контрактів: [17-simplification.md](docs/backend/17-simplification.md).

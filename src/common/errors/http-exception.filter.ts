@@ -48,6 +48,13 @@ export class HttpExceptionFilter implements ExceptionFilter {
           details = { messages: payload.message };
         } else {
           message = typeof payload.message === 'string' ? payload.message : exception.message;
+          if (
+            payload.details !== null &&
+            typeof payload.details === 'object' &&
+            !Array.isArray(payload.details)
+          ) {
+            details = payload.details as Record<string, unknown>;
+          }
         }
         if (typeof payload.code === 'string') code = payload.code;
       }

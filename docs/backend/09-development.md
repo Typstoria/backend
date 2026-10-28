@@ -10,7 +10,7 @@
 - Global validation, CORS allowlist, Helmet, request ID, JSON logs, error envelope.
 - Unit/HTTP tests, окремий PostgreSQL integration suite, lint/typecheck/build і GitHub Actions.
 
-Identity реалізований: реєстрація/вхід, Bearer access token без refresh/cookies, sessions, verify/reset через Mailjet, rate limits; див. [10-authentication.md](10-authentication.md). Project CRUD, MCP transport, OAuth, runner, Git, queue та storage adapters ще немає. Порожні модулі не вважаються реалізацією відповідних вимог.
+Identity реалізований: реєстрація/вхід, Bearer access token без refresh/cookies, sessions, verify/reset через Mailjet, rate limits; див. [10-authentication.md](10-authentication.md). Також реалізовано створення приватного проєкту з `main.typ`, початковою ревізією, локальним blob storage, pending mappings та idempotency; див. [12-project-creation.md](12-project-creation.md). Доступні список, перейменування з last-write-wins та м'яке видалення проєктів. Атомарні зміни текстових файлів і контексту реалізовані; див. [13-atomic-text-changes.md](13-atomic-text-changes.md). Staging ресурсів, attach/replace та історичне скачування також реалізовані; див. [14-resource-uploads.md](14-resource-uploads.md). Перший compile flow із PostgreSQL worker та Linux runner також працює; див. [15-compilation.md](15-compilation.md). Git writer, history/diff та restore також працюють; див. [16-git-history.md](16-git-history.md). MCP transport та OAuth ще немає. Порожні модулі не вважаються реалізацією відповідних вимог.
 
 ## 2. Середовище
 
@@ -23,7 +23,7 @@ Node 24.15+ потрібний у тому числі інструментам N
 1. HTTP controller і DTO розміщуються у `modules/<name>/http`.
 2. Use case/service — у `application`; правила станів/actor — у `domain`, коли з'явиться реальна потреба.
 3. TypeORM entities та adapters — у `infrastructure/persistence` конкретного модуля.
-4. Нові entities явно додати до `createDatabaseOptions`, а repositories зареєструвати через `TypeOrmModule.forFeature` у модулі-власнику. Спільний список entities використовує також CLI міграцій.
+4. Нові entities явно додати до `createDatabaseOptions`, services використовують transactional EntityManager/DataSource без зайвих repository providers. Спільний список entities використовує також CLI міграцій.
 5. Для REST використати класи `*.dto.ts`, явні return types контролерів та JSDoc-коментарі. Swagger compiler plugin автоматично додає базові schema/response metadata; додаткові error codes, security і специфічні формати описуються декораторами. Не повертати TypeORM entity напряму: доменні password/credential fields не мають стати частиною API.
 6. Application service приймає перевіреного actor. MCP adapter у майбутньому викликає ту саму логіку, але policy забороняє йому direct write/accept.
 
@@ -49,10 +49,10 @@ Integration suite створює унікальний тестовий запи�
 
 Налаштування compiler plugin живуть у `nest-cli.json`: лише `*.dto.ts`, `classValidatorShim`, `introspectComments`. Jest використовує ті самі options через `test/swagger-transformer.cjs`, щоб тести бачили ті самі схеми, що й реальна збірка. Типи entities не переносяться автоматично до API.
 
-`createOpenApiDocument` є спільним для Swagger UI, `/docs-json` і файлового експорту. Глобальний API prefix та health exclusions теж задаються однією функцією `configureApiRoutes`. Exporter читає справжній AppModule у Nest preview mode: не викликає конструктори providers, lifecycle hooks, TypeORM initialize або HTTP listen. Лише в окремому процесі exporter за відсутності DATABASE_URL задається placeholder URL, а режим metadata export використовує test і фіктивні mail credentials без створення providers або надсилання листів; production bootstrap не має такого fallback.
+`createOpenApiDocument` є спільним для Swagger UI, `/docs-json` і файлового експорту. Глобальний API prefix та health exclusions теж задаються однією функцією `configureApiRoutes`. Exporter читає спільний ApiModule у Nest preview mode: не викликає конструктори providers, lifecycle hooks, TypeORM initialize або HTTP listen. ApiModule не підключає runtime configuration/DatabaseModule, тому exporter не підставляє credentials і не змінює environment.
 
 Звичайний `tsc` або `ts-node` не запускає compiler plugin: для production/dev потрібні команди Nest CLI, а для Jest налаштовано AST transformer. Після зміни plugin options перезапусти watch-процес; чиста збірка очищає dist.
 
 ## 7. Наступні задачі
 
-Identity реалізований; наступний інкремент — snapshots/files/outbox і ownership. Scope і залежності залишаються у файлі 07; цей каркас не закриває дослідницькі spikes MCP/OAuth/Typst/Tinymist.
+Identity та CRUD проєктів P2 (cursor list, початковий snapshot, rename з last-write-wins, soft delete, ownership та pending mappings) реалізовані. Атомарні зміни текстових файлів/контексту з `baseRevisionId` реалізовані. Staging upload і підключення ресурсів до атомарного save реалізовані. Перший P3 compile flow реалізований: accepted revision → durable job → sandbox → private PDF. Git writer/history/diff/restore реалізовані. Залишаються подальша інтеграція compile diagnostics/events і package catalog; наступний доменний інкремент — proposals/review P4. Scope і залежності залишаються у файлі 07; цей інкремент не закриває дослідницькі spikes MCP/OAuth/Typst/Tinymist.

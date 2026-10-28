@@ -1,14 +1,14 @@
 # Контракти REST, MCP та подій
 
-Статус: проєктні контракти v0.1. Реалізація має опублікувати OpenAPI для REST та JSON Schema для MCP. Приклади нижче пояснюють цільову поведінку. Фактично реалізовані Identity endpoints описано у [10-authentication.md](10-authentication.md) і автоматичному OpenAPI; решта прикладів поки не реалізована.
+Статус: проєктні контракти v0.1. Реалізація має опублікувати OpenAPI для REST та JSON Schema для MCP. Приклади нижче пояснюють цільову поведінку. Фактично реалізовані Identity endpoints описано у [10-authentication.md](10-authentication.md), створення/читання початкового проєкту — у [12-project-creation.md](12-project-creation.md); атомарні текстові saves — у [13-atomic-text-changes.md](13-atomic-text-changes.md); staging/attach/replace та скачування ресурсів — у [14-resource-uploads.md](14-resource-uploads.md); компіляція прийнятих ревізій — у [15-compilation.md](15-compilation.md); history/diff/restore — у [16-git-history.md](16-git-history.md); точні схеми є в автоматичному OpenAPI. Решта прикладів поки не реалізована.
 
 ## 1. Спільні правила
 
 - REST prefix `/api`; JSON camelCase; ідентифікатори сутностей — додатні цілі числа (int32); дати ISO 8601 UTC.
 - У концептуальних прикладах нижче сутності іноді позначені зрозумілими підписами; реальний API приймає та повертає їхні числові ID.
 - Ліміти body, рядків, pagination і типів перевіряються DTO/schema до application service.
-- Mutation основного документа вимагає `baseRevisionId`; proposal — також expectedProposalVersion. Зміна title вимагає expectedMetadataVersion; анотації — expectedAnnotationVersion.
-- Для create, save batch, accept, restore, compile, import/export і backup використовується `Idempotency-Key`. У MCP відповідний аргумент `idempotencyKey`. Ключ обмежений actor/credential, операцією та payload hash; повтор з іншим payload → `409 IDEMPOTENCY_CONFLICT`.
+- Mutation основного документа вимагає `baseRevisionId`; proposal — також expectedProposalVersion. Зміна title має last-write-wins; анотації — expectedAnnotationVersion.
+- Для create, save batch, accept, restore, import/export і backup використовується `Idempotency-Key`. У MCP відповідний аргумент `idempotencyKey`. Ключ обмежений actor/credential, операцією та payload hash; повтор з іншим payload → `409 IDEMPOTENCY_CONFLICT`.
 - Перевірка idempotency виконується перед повторною перевіркою baseRevision, але після перевірки чинності actor й доступу. Повтор успішної операції не маскує відкликані credentials.
 - Списки мають cursor pagination, default 20/max 100. Пошук і читання тексту підтримують обмежені chunks.
 - Приватний чужий або видалений ресурс → 404 без розкриття існування. Немає автентифікації → 401; недостатньо scope до власного ресурсу → 403.
@@ -169,6 +169,6 @@ OAuth: Authorization Code + PKCE S256, consent із назвою клієнта,
 - Після успішного save клієнт оновлює baseRevisionId. `saved`, `compiling`, `compiled`, `compile failed`, `preview stale` — різні стани.
 - SSE події: `revision.created`, `proposal.updated`, `compile.finished`, `material.extracted`, `backup.updated`, `annotation.updated`. Дані містять IDs/версії, без source text і credentials.
 - SSE має event ID і обмежений replay; після розриву/пропуску клієнт робить GET state. SSE не є джерелом істини.
-- Читання проєкту через MCP стає видимим у вебі після того самого commit/outbox lifecycle. До прийняття ШІ-зміни відображаються тільки в review.
+- Читання проєкту через MCP стає видимим у вебі після того самого commit lifecycle. До прийняття ШІ-зміни відображаються тільки в review.
 - LSP WebSocket перевіряє session/Origin/project, обмежує розмір і частоту; raw internal URI Tinymist не повертаються клієнту.
 - Вибір шаблону, upload/import, acceptance із compile error та склад backup потребують frontend-екранів, але бекенд надає готові metadata/status/error contracts.

@@ -25,8 +25,8 @@ flowchart LR
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------- |
 | P0 — ризики               | Мінімальні окремі spikes: Typst sandbox; NestJS+MCP SDK; OAuth consent/PKCE; Tinymist; Git mapping/retry; storage transaction boundary                            | Рішення з файлу 08 | Є результати, exact versions і приклади запуску; ризики SDK/OAuth/sandbox не залишилися припущеннями    |
 | P1 — основа               | NestJS strict, config validation, TypeORM migrations, PostgreSQL, logs/error format, health, CI, sessions, register/login/logout, verify/reset email, Bearer auth | P0                 | Чисте середовище піднімається за інструкцією; auth lifecycle працює через Mailjet                       |
-| P2 — домен                | Project, stable file IDs, blobs, accepted revisions, context text, entrypoint, atomic changes, outbox, ownership, concurrency/idempotency                         | P1                 | Два конкурентні saves не втрачають текст; multi-file revision атомарна; між користувачами немає доступу |
-| P3 — compile/history      | BullMQ, CompileJob, runner, artifacts/diagnostics, fingerprints; bare Git repos, writer/reconciler, history/diff/restore                                          | P2                 | Багатофайловий Typst→PDF; старий job не стає поточним; restart не губить jobs/Git mapping               |
+| P2 — домен                | Project, stable file IDs, blobs, accepted revisions, context text, entrypoint, atomic changes, pending mappings, ownership, concurrency/idempotency               | P1                 | Два конкурентні saves не втрачають текст; multi-file revision атомарна; між користувачами немає доступу |
+| P3 — compile/history      | PostgreSQL polling, CompileJob, runner, artifacts/diagnostics, fingerprints; bare Git repos, writer/maintenance, history/diff/restore                             | P2                 | Багатофайловий Typst→PDF; старий job не стає поточним; restart не губить jobs/Git mapping               |
 | P4 — review               | Proposals/candidates, validation, multi-file diff, accept/reject, stale/rebase, явне прийняття compile failure                                                    | P3                 | ШІ-правки не змінюють currentRevision до web acceptance; повтор accept дає ту саму ревізію              |
 | P5 — зовнішні клієнти     | MCP read/search/propose/compile/resources, PAT, OAuth provider adapter/discovery/PKCE/consent, scopes/project grants/revocation                                   | P4; spike уже у P0 | Повний сценарій у реальному MCP-клієнті; revoked credential не працює; MCP не приймає власну правку     |
 | P6 — контекст/annotations | Material revisions, PDF/text/CSV/XLSX extraction, search chunks/provenance; annotation anchors/status/reanchor; MCP tools для них                                 | P2, P4, P5         | Заміна матеріалу версійна; матеріал не потрапляє у PDF автоматично; rename/restore не губить коментар   |
@@ -37,6 +37,8 @@ flowchart LR
 P0 не є прототипом усієї системи: кожен spike перевіряє конкретну невизначеність і закінчується коротким ADR. Його демонстраційний код не переноситься без перегляду до production.
 
 ## 3. Перший наскрізний сценарій
+
+Поточний прогрес P2: реалізовано CRUD приватних проєктів із cursor-пагінацією, last-write-wins при перейменуванні та м'яким видаленням; створення з порожнім `main.typ`, незмінним snapshot і ревізією №1; читання metadata/state/text file, ownership, idempotency, приватний локальний blob storage, audit та pending mappings. Контракт — [12-project-creation.md](12-project-creation.md). Також реалізовано [атомарні текстові зміни](13-atomic-text-changes.md) з base revision, idempotency, entrypoint/context та concurrency control. Реалізовано також [staging ресурсів](14-resource-uploads.md), атомарні attach/replace та приватне історичне скачування. Критерії P2 для підтримуваних файлів перевіряються PostgreSQL-тестами атомарності, конкурентності й ownership. Перший інкремент P3 — [асинхронна компіляція прийнятих ревізій](15-compilation.md) з PostgreSQL polling, lease recovery, Linux sandbox та приватним PDF — реалізований. Окремий [Git writer/history/diff/restore](16-git-history.md) із детермінованими commits та recovery також реалізований. Інтеграція SSE/точних diagnostic ranges, package catalog і production acceptance ще попереду; дослідницькі ризики P0 залишаються окремими задачами.
 
 Після P5 має працювати: реєстрація → підтвердження email → порожній/системний шаблон → редагування → PDF → підключення MCP → пропозиція ШІ → diff/помилки або PDF → прийняття/відхилення → нова Git-версія. Це перша цілісна демонстрація, але ще не завершення всього погодженого проєкту.
 
@@ -55,7 +57,7 @@ P0 не є прототипом усієї системи: кожен spike пе
 
 ## 5. Стратегія тестування
 
-Основна модель — сіра скриня, як у вихідних вимогах: перевірки через API/MCP з контрольованими даними та знанням стану БД/черги. Unit tests покривають policy, state transitions, paths, hashes і anchors. Integration tests використовують справжній PostgreSQL; critical flows також Redis, Git і Typst. Mock-only test не доводить придатності компілятора чи OAuth.
+Основна модель — сіра скриня, як у вихідних вимогах: перевірки через API/MCP з контрольованими даними та знанням стану БД/черги. Unit tests покривають policy, state transitions, paths, hashes і anchors. Integration tests використовують справжній PostgreSQL; critical flows також Git, PostgreSQL workers і Typst. Mock-only test не доводить придатності компілятора чи OAuth.
 
 | ID тестів | Що перевіряємо                                                                                                                 | Вимоги             |
 | --------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------ |
@@ -74,7 +76,7 @@ P0 не є прототипом усієї системи: кожен spike пе
 | T13       | ZIP round trip, manifest entrypoint, traversal/absolute/symlink/bomb/duplicates, failure atomicity                             | F17, N04           |
 | T14       | Tinymist completion/format/diagnostics/definition, source vs compiled outline, UTF-16 non-ASCII, stale documentVersion         | F11, F16           |
 | T15       | Backup success/retry, remote divergence, revoked GitHub App, exclude secrets, one-way behavior                                 | F18, N05           |
-| T16       | Kill worker, Redis outage, storage failure, stale lease result, delete project під час job, GC references                      | N05, N06           |
+| T16       | Kill worker, restart, storage failure, stale lease result, delete project під час job, GC references                           | N05, N06           |
 | T17       | Production smoke, TLS, email URLs, OAuth public resource, restore drill на чистому середовищі                                  | N06                |
 
 Для дефектів зберігати умови, кроки, фактичний/очікуваний результат і request/job IDs. Матрицю F/N → T підтримувати разом зі зміною вимог.

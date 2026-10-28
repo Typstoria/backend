@@ -4,7 +4,7 @@
 
 ## 1. Створення й ручне редагування
 
-Створення порожнього проєкту атомарно створює Project, `main.typ`, початкову ревізію та outbox-подію Git. Шаблон копіюється з конкретної TemplateVersion; подальше редагування оригіналу не змінює копію.
+Створення порожнього проєкту атомарно створює Project, `main.typ`, початкову ревізію та pending Git mapping. Шаблон копіюється з конкретної TemplateVersion; подальше редагування оригіналу не змінює копію.
 
 Ручне збереження застосовує повний текст або атомарний набір файлових операцій із `baseRevisionId`. Неправильний Typst зберігається: структурна валідація проєкту й компіляція — різні операції. Збереження не означає успішного PDF.
 
@@ -20,9 +20,9 @@ sequenceDiagram
   participant W as Compile worker
   participant R as Typst runner
   C->>A: compile(revisionId, idempotencyKey)
-  A->>D: CompileJob + Outbox у транзакції
+  A->>D: CompileJob у транзакції
   A-->>C: 202, jobId, revisionId
-  D-->>W: Outbox → BullMQ, лише jobId
+  D-->>W: Polling due jobs із PostgreSQL
   W->>D: Claim job з lease token
   W->>R: Незмінні files + fingerprint
   R-->>W: PDF або diagnostics
@@ -49,29 +49,7 @@ Worker створює нову робочу директорію з точног
 6. Користувач бачить diff усіх файлів, зміни контексту/матеріалів/анотацій, PDF або помилки та baseRevision.
 7. Користувач приймає або відхиляє у вебінтерфейсі. MCP може читати статус і доопрацьовувати draft, але не приймати його.
 
-```mermaid
-stateDiagram-v2
-  [*] --> draft
-  draft --> validating: submit
-  validating --> ready: Перевірки і компіляція успішні
-  validating --> compile_failed: Коректний проєкт, Typst не компілюється
-  validating --> invalid: Некоректна структура чи операції
-  validating --> validation_failed: Недоступний runner або внутрішній збій
-  ready --> accepted: Вебпідтвердження
-  compile_failed --> accepted: Окреме підтвердження попередження
-  ready --> stale: Основна версія змінилася
-  compile_failed --> stale: Основна версія змінилася
-  invalid --> draft: Виправлення
-  compile_failed --> draft: Виправлення
-  validation_failed --> validating: Повтор перевірки
-  stale --> draft: Явне оновлення бази і перевірка
-  draft --> rejected
-  ready --> rejected
-  compile_failed --> rejected
-  stale --> rejected
-```
-
-Відхилення та видалення чернетки дозволені також для інших неterminal станів; active validation скасовується. Прострочення переводить неterminal proposal у `expired`. Перехід і логування виконуються транзакційно.
+Lifecycle proposal: `draft → accepted|rejected|expired`. Validation/compile result належить конкретній candidate version. Готовність, compile error та застаріла база виводяться з цих даних, не дублюються persisted status-ами. Structural checks виконуються при побудові candidate. Infrastructure compile failure не є успішною перевіркою.
 
 Прийняття в одній короткій транзакції:
 
@@ -80,9 +58,9 @@ stateDiagram-v2
 - Перевірити currentRevisionId = baseRevisionId. Застаріла база → конфлікт; автоматичного merge немає.
 - Для source/resource edits вимагати завершений compile результат цього candidate. `compile_failed` допускається лише з `acknowledgeCompileFailure=true` і явним попередженням користувачу. `invalid` та infrastructure `validation_failed` не приймаються як перевірені.
 - Для context/annotation-only змін компіляція `not_required`; структурна валідація все одно обов'язкова.
-- Створити нову accepted revision і застосувати погоджені annotation operations атомарно; змінити currentRevisionId; позначити acceptedRevisionId; записати audit/outbox.
+- Створити accepted revision лише при зміні snapshot і застосувати annotation operations атомарно; змінити currentRevisionId; позначити acceptedRevisionId; записати audit/pending mapping.
 
-Якщо proposal змінює лише анотації, створюється подія прийняття та нова основна ревізія з тим самим content manifest; Git writer може створити metadata commit. Acceptance прив'язана до точної версії змін, а не до останнього вмісту «на момент натискання».
+Прийняття annotation-only proposal оновлює анотації та outcome proposal атомарно, без нової content revision/Git commit; анотації мають власні versions. Acceptance прив'язана до точної версії змін, а не до останнього вмісту «на момент натискання».
 
 Повтор прийняття з тим самим idempotency key повертає той самий acceptedRevisionId. Нові candidate edits анулюють попередню validation. Два незалежні proposals можуть існувати одночасно, але після прийняття одного інший із тією самою базою стане stale.
 
@@ -130,4 +108,4 @@ Worker експортує accepted snapshot у резервну Git-історі
 
 Completion/format/definition/diagnostics працюють через LSP proxy. Formatting повертає edits; застосування користувачем проходить звичайне збереження з baseRevision. Frontend не отримує URL чи port внутрішнього Tinymist.
 
-Для outline використовуємо syntax/LSP symbols для позицій у тексті; для обчислюваних Typst headings досліджуємо compiler query на тому самому snapshot. Повертаємо origin `syntax|compiled`, revisionId/documentVersion, source location за наявності та completeness. За помилкового документа outline може бути partial/stale. Preview пришвидшується debounce, кешем точних входів та session reuse; авторитетний завантажуваний PDF проходить CompileJob.
+Для початкового outline використовуємо syntax/LSP symbols і позиції у вихідному коді з revisionId/documentVersion. Computed headings можуть бути відсутні; окремий compiler-query pipeline додається за конкретної потреби. При помилковому документі outline може бути partial. Авторитетний PDF проходить CompileJob.

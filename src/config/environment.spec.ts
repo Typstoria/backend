@@ -1,4 +1,8 @@
-import { validateEnvironment } from './environment';
+import {
+  validateEnvironment,
+  validateDatabaseEnvironment,
+  validateWorkerEnvironment,
+} from './environment';
 
 const base = {
   DATABASE_URL: 'postgresql://user:secret@127.0.0.1:5432/typstoria',
@@ -63,6 +67,10 @@ describe('environment validation', () => {
     { SWAGGER_ENABLED: 'yes' },
     { DATABASE_URL: 'https://example.com' },
     { DATABASE_POOL_SIZE: '-1' },
+    { GIT_STORAGE_PATH: '' },
+    { GIT_BINARY_PATH: ' ' },
+    { TYPST_BINARY_PATH: ' ' },
+    { COMPILE_WORK_PATH: '' },
     { CORS_ORIGINS: '*' },
     { CORS_ORIGINS: 'https://example.com/path' },
     { CORS_ORIGINS: 'https://user:password@example.com' },
@@ -70,6 +78,13 @@ describe('environment validation', () => {
     expect(() => validateEnvironment({ ...base, ...invalid })).toThrow(
       'Invalid environment variables',
     );
+  });
+
+  it('validates only database settings for migrations and no mail credentials for workers', () => {
+    const database = { DATABASE_URL: base.DATABASE_URL };
+    expect(validateDatabaseEnvironment(database).DATABASE_URL).toBe(base.DATABASE_URL);
+    expect(validateWorkerEnvironment(database).BLOB_STORAGE_PATH).toBe('.local/blobs');
+    expect(() => validateEnvironment(database)).toThrow('Invalid environment variables');
   });
 
   it('does not expose secret values in validation errors', () => {

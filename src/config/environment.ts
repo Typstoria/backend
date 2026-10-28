@@ -11,17 +11,28 @@ const originSchema = z.url().refine((value) => {
   );
 }, 'Use an HTTP(S) origin without a path, credentials or trailing slash');
 
-const environmentSchema = z
-  .object({
-    NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+export const databaseEnvironmentSchema = z.object({
+  DATABASE_URL: z
+    .url()
+    .refine((value) => ['postgres:', 'postgresql:'].includes(URL.parse(value)?.protocol ?? '')),
+  DATABASE_CONNECT_TIMEOUT_MS: z.coerce.number().int().min(100).max(60000).default(5000),
+  DATABASE_QUERY_TIMEOUT_MS: z.coerce.number().int().min(100).max(60000).default(5000),
+  DATABASE_POOL_SIZE: z.coerce.number().int().min(1).max(100).default(10),
+});
+
+const workerEnvironmentSchema = databaseEnvironmentSchema.extend({
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  GIT_STORAGE_PATH: z.string().trim().min(1).default('.local/history'),
+  GIT_BINARY_PATH: z.string().trim().min(1).default('/usr/bin/git'),
+  TYPST_BINARY_PATH: z.string().trim().min(1).default('/usr/local/bin/typst'),
+  COMPILE_WORK_PATH: z.string().trim().min(1).default('.local/compile'),
+  BLOB_STORAGE_PATH: z.string().trim().min(1).default('.local/blobs'),
+});
+
+const environmentSchema = workerEnvironmentSchema
+  .extend({
     HOST: z.string().min(1).default('127.0.0.1'),
     PORT: z.coerce.number().int().min(1).max(65535).default(3000),
-    DATABASE_URL: z
-      .url()
-      .refine((value) => ['postgres:', 'postgresql:'].includes(URL.parse(value)?.protocol ?? '')),
-    DATABASE_CONNECT_TIMEOUT_MS: z.coerce.number().int().min(100).max(60000).default(5000),
-    DATABASE_QUERY_TIMEOUT_MS: z.coerce.number().int().min(100).max(60000).default(5000),
-    DATABASE_POOL_SIZE: z.coerce.number().int().min(1).max(100).default(10),
     CORS_ORIGINS: z
       .string()
       .default('http://localhost:5173')
@@ -49,28 +60,36 @@ const environmentSchema = z
     MAILJET_SECRET_KEY: z.string().trim().min(1),
   })
   .superRefine((config, context) => {
-    const requireField = (field: string) =>
-      context.addIssue({ code: 'custom', path: [field], message: 'Required for this environment' });
-    if (config.NODE_ENV === 'production') {
-      if (!config.PUBLIC_WEB_URL.startsWith('https://')) requireField('PUBLIC_WEB_URL');
-    }
+    if (config.NODE_ENV === 'production' && !config.PUBLIC_WEB_URL.startsWith('https://'))
+      context.addIssue({
+        code: 'custom',
+        path: ['PUBLIC_WEB_URL'],
+        message: 'HTTPS required in production',
+      });
   });
 
+export type DatabaseEnvironment = z.infer<typeof databaseEnvironmentSchema>;
+export type WorkerEnvironment = z.infer<typeof workerEnvironmentSchema>;
 export type Environment = Omit<z.infer<typeof environmentSchema>, 'SWAGGER_ENABLED'> & {
   SWAGGER_ENABLED: boolean;
 };
 
-export function validateEnvironment(input: Record<string, unknown>): Environment {
-  const result = environmentSchema.safeParse(input);
-
+function parse<S extends z.ZodType>(schema: S, input: Record<string, unknown>): z.infer<S> {
+  const result = schema.safeParse(input);
   if (!result.success) {
-    // Report variable names, never their values (DATABASE_URL contains credentials).
     const fields = [...new Set(result.error.issues.map((issue) => issue.path.join('.')))];
     throw new Error(`Invalid environment variables: ${fields.join(', ')}`);
   }
+  return result.data;
+}
 
-  return {
-    ...result.data,
-    SWAGGER_ENABLED: result.data.SWAGGER_ENABLED ?? result.data.NODE_ENV !== 'production',
-  };
+export function validateDatabaseEnvironment(input: Record<string, unknown>): DatabaseEnvironment {
+  return parse(databaseEnvironmentSchema, input);
+}
+export function validateWorkerEnvironment(input: Record<string, unknown>): WorkerEnvironment {
+  return parse(workerEnvironmentSchema, input);
+}
+export function validateEnvironment(input: Record<string, unknown>): Environment {
+  const config = parse(environmentSchema, input);
+  return { ...config, SWAGGER_ENABLED: config.SWAGGER_ENABLED ?? config.NODE_ENV !== 'production' };
 }
