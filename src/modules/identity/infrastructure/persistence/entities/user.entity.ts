@@ -14,6 +14,9 @@ export class User {
   @PrimaryGeneratedColumn('increment', { type: 'integer', primaryKeyConstraintName: 'users_pkey' })
   id!: number;
 
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  name!: string | null;
+
   @Column({ type: 'varchar', length: 254 })
   email!: string;
 

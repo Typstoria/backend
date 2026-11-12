@@ -26,6 +26,8 @@ npm run start:dev
 
 API має префікс `/api`; health і документація доступні без нього. Swagger показує лише фактично реалізовані endpoints. `SWAGGER_ENABLED=false` вимикає UI та JSON; без явного налаштування вони вимкнені у production.
 
+Налаштування акаунта: `GET/PATCH /api/auth/me` для читання/імені, `POST /api/auth/change-password` та видалення через одноразове email-підтвердження. Контракти й межі фізичного очищення — у [18-account-settings.md](docs/backend/18-account-settings.md).
+
 ## Авторизація та Mailjet
 
 `/api/auth`: `register`, `login`, `me`, `logout`, `resend-verification`, `verify-email`, `forgot-password`, `reset-password`. Керування сесіями через окремі API-маршрути відсутнє. Приватні маршрути за замовчуванням потребують підтвердженої пошти.

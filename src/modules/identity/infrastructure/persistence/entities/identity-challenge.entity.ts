@@ -12,6 +12,7 @@ import { User } from './user.entity';
 export enum ChallengeKind {
   VerifyEmail = 'verify_email',
   ResetPassword = 'reset_password',
+  DeleteAccount = 'delete_account',
 }
 
 @Entity({ name: 'identity_challenges' })

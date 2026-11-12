@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Post, Req, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Patch, Post, Req, UseInterceptors } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiForbiddenResponse,
@@ -9,6 +9,7 @@ import {
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { ErrorResponseDto } from '../../../common/errors/error-response.dto';
+import { AccountService } from '../application/account.service';
 import { IdentityService } from '../application/identity.service';
 import { SessionService } from '../application/session.service';
 import { ChallengeKind } from '../infrastructure/persistence/entities/identity-challenge.entity';
@@ -16,6 +17,9 @@ import { EMAIL_RESEND_COOLDOWN_SECONDS } from '../domain/identity-policy';
 import { Public, VerifiedRequired } from './auth-policy';
 import type { AuthRequest } from './auth-request';
 import {
+  AccountDto,
+  ChangePasswordDto,
+  UpdateProfileDto,
   CredentialsDto,
   EmailDto,
   LoginDto,
@@ -23,7 +27,6 @@ import {
   MessageDto,
   ResetPasswordDto,
   TokenDto,
-  UserDto,
   userDto,
 } from './identity.dto';
 import { NoStoreInterceptor } from './no-store.interceptor';
@@ -42,6 +45,7 @@ const accepted = {
 export class IdentityController {
   constructor(
     private readonly identity: IdentityService,
+    private readonly accounts: AccountService,
     private readonly sessions: SessionService,
   ) {}
 
@@ -82,8 +86,48 @@ export class IdentityController {
   @VerifiedRequired()
   @ApiBearerAuth('bearer')
   @ApiUnauthorizedResponse({ type: ErrorResponseDto })
-  me(@Req() request: AuthRequest): UserDto {
-    return userDto(request.identity!.user);
+  me(@Req() request: AuthRequest): Promise<AccountDto> {
+    return this.accounts.profile(request.identity!);
+  }
+
+  /** Edit the current user's display name. Email and Google identity remain unchanged. */
+  @Patch('me')
+  @VerifiedRequired()
+  @ApiBearerAuth('bearer')
+  @ApiUnauthorizedResponse({ type: ErrorResponseDto })
+  updateProfile(@Body() dto: UpdateProfileDto, @Req() request: AuthRequest): Promise<AccountDto> {
+    return this.accounts.update(request.identity!, dto.name);
+  }
+
+  /** Change a password after checking the current one. All sessions are revoked. */
+  @Post('change-password')
+  @HttpCode(204)
+  @VerifiedRequired()
+  @ApiBearerAuth('bearer')
+  @ApiUnauthorizedResponse({ type: ErrorResponseDto })
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async changePassword(@Body() dto: ChangePasswordDto, @Req() request: AuthRequest): Promise<void> {
+    await this.accounts.changePassword(request.identity!, dto.currentPassword, dto.newPassword);
+  }
+
+  /** Send an account deletion link to the current verified email. No deletion occurs yet. */
+  @Post('request-account-deletion')
+  @HttpCode(202)
+  @VerifiedRequired()
+  @ApiBearerAuth('bearer')
+  @ApiUnauthorizedResponse({ type: ErrorResponseDto })
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async requestDeletion(@Req() request: AuthRequest): Promise<MessageDto> {
+    await this.identity.requestAccountDeletion(request.identity!);
+    return accepted;
+  }
+
+  /** Permanently delete an account after an explicit confirmation with its single-use email token. */
+  @Post('delete-account')
+  @HttpCode(204)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async deleteAccount(@Body() dto: TokenDto): Promise<void> {
+    await this.accounts.deleteAccount(dto.token);
   }
 
   /** Revoke the current Bearer access token. */
