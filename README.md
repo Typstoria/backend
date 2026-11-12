@@ -1,6 +1,6 @@
 # Typstoria — серверна частина
 
-Реалізовано початковий каркас **NestJS + TypeORM + PostgreSQL**: модулі предметних областей, конфігурацію, міграції, health endpoints, Swagger/OpenAPI, обробку помилок, request ID, тести та CI. Реалізовано також реєстрацію, вхід/вихід, один Bearer access token без refresh/cookies, підтвердження пошти й відновлення пароля через Mailjet та rate limits. Перший сценарій P2 створює приватний проєкт із порожнім `main.typ` і ревізією №1 та дозволяє прочитати його стан, переглянути список власних проєктів, перейменувати або м’яко видалити проєкт. Працює також атомарне редагування текстових файлів і контексту з новою ревізією. Працюють staging uploads ресурсів, їх атомарне додавання/заміна та скачування з поточної або історичної ревізії. Асинхронна компіляція прийнятої ревізії в PDF через окремий worker і Linux sandbox також працює. Git writer, історія/diff ревізій та restore також працюють. MCP і review ще не реалізовані. Документація розрізняє реалізовані сценарії та цільову систему.
+Реалізовано початковий каркас **NestJS + TypeORM + PostgreSQL**: модулі предметних областей, конфігурацію, міграції, health endpoints, Swagger/OpenAPI, обробку помилок, request ID, тести та CI. Реалізовано також реєстрацію, вхід/вихід, один Bearer access token без refresh/cookies, підтвердження пошти й відновлення пароля через Mailjet та rate limits. Перший сценарій P2 створює приватний проєкт із порожнім `main.typ` і ревізією №1 та дозволяє прочитати його стан, переглянути список власних проєктів, перейменувати або м’яко видалити проєкт. Працює також атомарне редагування текстових файлів і контексту з новою ревізією. Працюють staging uploads ресурсів, їх атомарне додавання/заміна та скачування з поточної або історичної ревізії. Асинхронна компіляція прийнятої ревізії в PDF через окремий worker і Linux sandbox також працює. Git writer, історія/diff ревізій та restore також працюють. Працюють пропозиції з вебпереглядом і MCP з PAT та OAuth. Документація розрізняє реалізовані сценарії та цільову систему.
 
 ## Локальний запуск
 
@@ -73,6 +73,14 @@ References доступні для повторного використання
 `GET /api/projects/:id/revisions` повертає прийняті ревізії з cursor-пагінацією та Git status; `/revisions/:revisionId/diff?against=…` порівнює immutable snapshots за сталими file IDs. Text patches обмежені, binary має metadata/hashes. `POST /restore` з `targetRevisionId`, `expectedCurrentRevisionId` та `Idempotency-Key` створює нову ревізію з попереднім станом.
 
 Окремий `npm run worker:history:dev` (після build — `npm run worker:history`) обробляє pending mappings безпосередньо з PostgreSQL і пише приватні bare repos у `GIT_STORAGE_PATH` (типово `.local/history`). Git outage не скасовує saves; history/diff/restore читають PostgreSQL. Повтори writer відновлюють той самий commit SHA. Контракт, retry та перевірки — у [16-git-history.md](docs/backend/16-git-history.md).
+
+## Пропозиції змін і review
+
+P4 реалізований через `/api/projects/:projectId/proposals`: окремі immutable candidates, diff, приватне читання файлів, preview compilation, web-only accept/reject та explicit rebase. Основний документ змінюється лише після прийняття точного version/hash/validation. No-op не створює зайвої ревізії, context-only не компілюється. Preview job використовує звичайні compile status/PDF endpoints і повертає revisionId=null та proposalId/candidateVersion/candidateSnapshotId. Повний контракт і сценарій перевірки — [18-proposals.md](docs/backend/18-proposals.md).
+
+## Доступ AI-клієнтів через MCP
+
+Streamable HTTP `/mcp` дає зовнішньому клієнту доступ до дозволених проєктів: читання, пошук, пропозиції, компіляція і PDF. Підключення через PAT або OAuth, підтвердження змін через веб. Конфігурація й тестовий сценарій — [19-mcp-access.md](docs/backend/19-mcp-access.md).
 
 ## Автоматична специфікація Swagger
 

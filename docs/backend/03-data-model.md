@@ -2,7 +2,7 @@
 
 Статус: проєктна модель v0.1. Identity та сутності початкового проєкту вже реалізовані в TypeORM; поточний сценарій описано у [12-project-creation.md](12-project-creation.md). Атомарні saves та staged uploads реалізовані; див. [13-atomic-text-changes.md](13-atomic-text-changes.md) і [14-resource-uploads.md](14-resource-uploads.md). Решта таблиці нижче описує цільовий домен і не означає наявності готових entities або API.
 
-Поточний CompileJob зберігає також одне PDF blob-посилання з expiry та діагностику. Окрема CompileArtifact таблиця поки не потрібна для одного PDF; поля proposal/candidate нижче залишаються цільовими. Див. [15-compilation.md](15-compilation.md).
+Поточний CompileJob зберігає також одне PDF blob-посилання з expiry та діагностику. Окрема CompileArtifact таблиця поки не потрібна для одного PDF; поля proposal/candidate реалізовані для preview; точний контракт у [18-proposals.md](18-proposals.md). Див. [15-compilation.md](15-compilation.md).
 
 ## 1. Основний принцип
 
@@ -36,9 +36,9 @@
 | GitRevisionMapping         | revisionId unique, commitSha, parentSha, status pending/ready/failed, error, attempts                                                                                                       |
 | CompileJob                 | id, projectId, snapshotId, revisionId?, proposalId?, candidateVersion?, inputManifestHash, compilerFingerprint, status, attempt, leaseToken, leaseUntil, timestamps, diagnostics, errorCode |
 | CompileArtifact            | compileJobId, blobId, kind pdf/log, expiresAt                                                                                                                                               |
-| ChangeProposal             | id, projectId, creatorCredentialId, baseRevisionId, candidateSnapshotId, version, status, summary, latestValidationId, acceptedRevisionId?                                                  |
-| ProposalOperation          | proposalId, typed payload, targetFileId/materialId/annotationId, expected blob/hash; службове представлення diff                                                                            |
-| ProposalValidation         | proposalId, candidateVersion, candidateManifestHash, structuralResult, compileJobId?, status, timestamps                                                                                    |
+| ChangeProposal             | id, projectId, creatorId, channel, version, status, acceptedRevisionId?, createdAt, expiresAt; base/hash/summary/latestValidation читаються з candidate/validation                          |
+| ProposalCandidate          | proposalId, projectId, version, baseRevisionId, snapshotId, summary, operations; незмінна версія кандидата                                                                                  |
+| ProposalValidation         | id, proposalId, projectId, candidateVersion, snapshotId, compileJobId?, createdAt; status/hash обчислюються з job/snapshot                                                                  |
 | Annotation                 | id, projectId, authorId, source web/mcp, body, status active/resolved, version                                                                                                              |
 | AnnotationAnchor           | annotationId, fileId, revisionId, UTF-16 range, exactQuote, prefix, suffix, status attached/outdated/orphaned                                                                               |
 | Template / TemplateVersion | ownerId? для системних, title, immutable snapshot manifest, entrypoint, approved included materials                                                                                         |

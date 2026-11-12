@@ -22,6 +22,7 @@ import { WebSession } from './infrastructure/persistence/entities/web-session.en
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 120 }]),
   ],
   controllers: [IdentityController, GoogleAuthController],
+  exports: [SessionService],
   providers: [
     PasswordHasher,
     IdentityService,

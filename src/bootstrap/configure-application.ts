@@ -1,3 +1,4 @@
+import { mountOAuth } from '../modules/access/mount-oauth';
 import { ValidationPipe } from '@nestjs/common';
 import type { INestApplication } from '@nestjs/common';
 import { json, urlencoded } from 'express';
@@ -13,14 +14,22 @@ export function configureApplication(app: INestApplication): void {
 
   app.use(requestContext);
   app.use(helmet());
+  if (config.mcpOAuthCookieKey) mountOAuth(app);
   app.enableCsrfProtection({ trustedOrigins: config.corsOrigins });
   // Bounded multi-file JSON; other routes retain the 1 MiB request limit.
   app.use('/api/projects/:projectId/changes', json({ limit: '8mb' }));
+  app.use('/api/projects/:projectId/proposals', json({ limit: '8mb' }));
+  app.use('/mcp', json({ limit: '8mb' }));
   app.use(json({ limit: '1mb' }));
   app.use(urlencoded({ extended: false, limit: '1mb' }));
   app.enableCors({
     origin: config.corsOrigins,
-    exposedHeaders: ['X-Request-Id', 'Content-Disposition'],
+    exposedHeaders: [
+      'X-Request-Id',
+      'Content-Disposition',
+      'WWW-Authenticate',
+      'Mcp-Protocol-Version',
+    ],
   });
   configureApiRoutes(app);
   app.useGlobalPipes(

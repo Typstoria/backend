@@ -1,3 +1,4 @@
+import { Proposal } from '../../proposals/infrastructure/persistence/entities/proposal.entity';
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { DataSource, EntityManager, IsNull, MoreThan } from 'typeorm';
@@ -215,7 +216,19 @@ export class CompileProcessor {
       lock: { mode: 'pessimistic_read' },
     });
     if (!project) return false;
-    return !!project;
+    if (job.proposalId !== null) {
+      const proposal = await manager.findOneBy(Proposal, {
+        id: job.proposalId,
+        projectId: job.projectId,
+      });
+      return (
+        !!proposal &&
+        proposal.status === 'draft' &&
+        proposal.version === job.candidateVersion &&
+        proposal.expiresAt.getTime() > Date.now()
+      );
+    }
+    return true;
   }
 
   private async cancel(manager: EntityManager, id: number): Promise<void> {

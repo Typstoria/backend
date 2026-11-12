@@ -40,7 +40,11 @@ P0 не є прототипом усієї системи: кожен spike пе
 
 Поточний прогрес P2: реалізовано CRUD приватних проєктів із cursor-пагінацією, last-write-wins при перейменуванні та м'яким видаленням; створення з порожнім `main.typ`, незмінним snapshot і ревізією №1; читання metadata/state/text file, ownership, idempotency, приватний локальний blob storage, audit та pending mappings. Контракт — [12-project-creation.md](12-project-creation.md). Також реалізовано [атомарні текстові зміни](13-atomic-text-changes.md) з base revision, idempotency, entrypoint/context та concurrency control. Реалізовано також [staging ресурсів](14-resource-uploads.md), атомарні attach/replace та приватне історичне скачування. Критерії P2 для підтримуваних файлів перевіряються PostgreSQL-тестами атомарності, конкурентності й ownership. Перший інкремент P3 — [асинхронна компіляція прийнятих ревізій](15-compilation.md) з PostgreSQL polling, lease recovery, Linux sandbox та приватним PDF — реалізований. Окремий [Git writer/history/diff/restore](16-git-history.md) із детермінованими commits та recovery також реалізований. Інтеграція SSE/точних diagnostic ranges, package catalog і production acceptance ще попереду; дослідницькі ризики P0 залишаються окремими задачами.
 
-Після P5 має працювати: реєстрація → підтвердження email → порожній/системний шаблон → редагування → PDF → підключення MCP → пропозиція ШІ → diff/помилки або PDF → прийняття/відхилення → нова Git-версія. Це перша цілісна демонстрація, але ще не завершення всього погодженого проєкту.
+Поточний прогрес P4: реалізовано [пропозиції та review](18-proposals.md): незмінні версії candidates, приватне читання/diff/download, validation через спільний compile worker, web-only accept/reject, exact version/hash/validation, idempotent acceptance, stale conflict та explicit rebase. Context-only/no-op не потребують компіляції; лише фактичний Typst error можна прийняти з явним acknowledgement. Інтеграція екрана review у frontend залишається окремою роботою.
+
+P5: реалізовано [PAT, OAuth та MCP](19-mcp-access.md). Наступний етап — P6, контекстні матеріали та анотації.
+
+Наскрізний сценарій після P5: реєстрація → підтвердження email → порожній проєкт → редагування → PDF → підключення MCP → пропозиція ШІ → diff/помилки або PDF → прийняття/відхилення → нова Git-версія. Це перша цілісна демонстрація, але ще не завершення всього погодженого проєкту.
 
 Прямий MCP write не використовується як тимчасова «готова функція», оскільки погоджено обов'язкове підтвердження.
 

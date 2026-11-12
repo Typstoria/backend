@@ -224,6 +224,81 @@ describe('offline OpenAPI generation', () => {
           required: ['revisionId'],
           properties: { revisionId: { example: 1, type: 'integer', maximum: 2147483647 } },
         });
+        const proposals = '/api/projects/{projectId}/proposals';
+        expect(document.paths[proposals]?.post).toMatchObject({
+          security: [{ bearer: [] }],
+          responses: {
+            '201': {
+              content: {
+                'application/json': { schema: { $ref: '#/components/schemas/ProposalDto' } },
+              },
+            },
+          },
+        });
+        for (const suffix of [
+          '/{proposalId}',
+          '/{proposalId}/candidate',
+          '/{proposalId}/diff',
+          '/{proposalId}/files/{fileId}',
+          '/{proposalId}/files/{fileId}/download',
+          '/{proposalId}/validations/{validationId}',
+        ])
+          expect(document.paths[proposals + suffix]?.get?.security).toEqual([{ bearer: [] }]);
+        expect(
+          document.paths[proposals + '/{proposalId}/validate']?.post?.responses['202'],
+        ).toBeDefined();
+        expect(document.paths[proposals + '/{proposalId}/accept']?.post?.parameters).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ name: 'Idempotency-Key', in: 'header', required: true }),
+          ]),
+        );
+        expect(document.components?.schemas?.AcceptProposalDto).toMatchObject({
+          required: expect.arrayContaining([
+            'expectedProposalVersion',
+            'baseRevisionId',
+            'validationId',
+            'candidateManifestHash',
+          ]),
+          properties: { acknowledgeCompileFailure: { type: 'boolean', default: false } },
+        });
+        expect(document.components?.schemas?.UpdateProposalDto).toMatchObject({
+          required: expect.arrayContaining(['expectedProposalVersion', 'operations']),
+          properties: {
+            operations: { type: 'array', items: { discriminator: { propertyName: 'type' } } },
+          },
+        });
+        expect(document.components?.schemas?.UpdateProposalDto).not.toHaveProperty(
+          'properties.baseRevisionId',
+        );
+        expect(document.components?.schemas?.ProposalCandidateDto).toHaveProperty(
+          'properties.operations',
+        );
+        expect(document.components?.schemas?.CompilationDto).toMatchObject({
+          properties: {
+            revisionId: { nullable: true },
+            proposalId: { nullable: true },
+            candidateVersion: { nullable: true },
+            candidateSnapshotId: { nullable: true },
+          },
+        });
+        const access = document.paths['/api/access/tokens'];
+        expect(access?.post).toMatchObject({
+          security: [{ bearer: [] }],
+          responses: {
+            '201': {
+              content: {
+                'application/json': { schema: { $ref: '#/components/schemas/CreatedPatDto' } },
+              },
+            },
+          },
+        });
+        expect(access?.get?.security).toEqual([{ bearer: [] }]);
+        expect(document.paths['/api/access/tokens/{id}']?.delete?.responses['204']).toBeDefined();
+        expect(document.paths['/api/access/connections']?.get?.security).toEqual([{ bearer: [] }]);
+        expect(
+          document.paths['/api/access/connections/{id}']?.delete?.responses['204'],
+        ).toBeDefined();
+        expect(document.paths['/mcp']).toBeUndefined(); // Protocol discovery supplies its own schemas.
         expect(document.components?.securitySchemes?.csrf).toBeUndefined();
         expect(document.components?.securitySchemes?.session).toBeUndefined();
         expect(document.paths['/api/auth/csrf']).toBeUndefined();

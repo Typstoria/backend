@@ -1,3 +1,4 @@
+import { requireScope } from '../../../common/actor/access-policy';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { createTwoFilesPatch } from 'diff';
 import { DataSource } from 'typeorm';
@@ -30,27 +31,42 @@ export class RevisionDiffService {
     revisionId: number,
     against: number,
   ): Promise<RevisionDiffDto> {
+    requireScope(actor, 'history:read', 'documents:read', 'context:read');
     await this.projects.ownedProject(this.database.manager, actor, projectId);
     const load = async (id: number) => {
       const revision = await this.database.manager.findOneBy(ProjectRevision, { id, projectId });
       if (!revision) throw new NotFoundException('Revision not found');
-      const snapshot = await this.database.manager.findOneByOrFail(ProjectSnapshot, {
-        id: revision.snapshotId,
-        projectId,
-      });
-      const files = await readSnapshotFiles(
-        this.database.manager,
-        projectId,
-        snapshot.id,
-        actor.userId,
-      );
       const mapping = await this.database.manager.findOneBy(GitRevisionMapping, {
         revisionId: id,
         projectId,
       });
-      return { snapshot, files, status: mapping?.status ?? 'pending' };
+      return { snapshotId: revision.snapshotId, status: mapping?.status ?? 'pending' };
     };
     const [before, after] = await Promise.all([load(against), load(revisionId)]);
+    return {
+      fromRevisionId: against,
+      toRevisionId: revisionId,
+      fromHistorySyncStatus: before.status,
+      toHistorySyncStatus: after.status,
+      ...(await this.snapshots(actor, projectId, before.snapshotId, after.snapshotId)),
+    };
+  }
+
+  async snapshots(
+    actor: UserActor,
+    projectId: number,
+    fromSnapshotId: number,
+    toSnapshotId: number,
+  ): Promise<Pick<RevisionDiffDto, 'files' | 'context' | 'entrypoint'>> {
+    requireScope(actor, 'documents:read', 'context:read');
+    await this.projects.ownedProject(this.database.manager, actor, projectId);
+    const load = async (id: number) => {
+      const snapshot = await this.database.manager.findOneBy(ProjectSnapshot, { id, projectId });
+      if (!snapshot) throw new NotFoundException('Snapshot not found');
+      const files = await readSnapshotFiles(this.database.manager, projectId, id, actor.userId);
+      return { snapshot, files };
+    };
+    const [before, after] = await Promise.all([load(fromSnapshotId), load(toSnapshotId)]);
     const oldFiles = new Map(before.files.map((file) => [file.fileId, file]));
     const newFiles = new Map(after.files.map((file) => [file.fileId, file]));
     const changes: { before?: DraftFile; after?: DraftFile; result: FileDiffDto }[] = [];
@@ -177,10 +193,6 @@ export class RevisionDiffService {
         );
     }
     return {
-      fromRevisionId: against,
-      toRevisionId: revisionId,
-      fromHistorySyncStatus: before.status,
-      toHistorySyncStatus: after.status,
       files: changes.map((change) => change.result),
       context,
       entrypoint: {

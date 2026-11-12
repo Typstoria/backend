@@ -43,6 +43,17 @@ const environmentSchema = workerEnvironmentSchema
       .transform((value) => value === 'true')
       .optional(),
     PUBLIC_WEB_URL: originSchema.default('http://localhost:5173'),
+    MCP_PUBLIC_ORIGIN: z.preprocess(
+      (value) => (value === '' ? undefined : value),
+      originSchema.optional(),
+    ),
+    MCP_OAUTH_COOKIE_KEY: z.preprocess(
+      (value) => (value === '' ? undefined : value),
+      z
+        .string()
+        .regex(/^[A-Za-z0-9_-]{43}$/)
+        .optional(),
+    ),
     AUTH_ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).max(2592000).default(604800),
     AUTH_VERIFY_TTL_SECONDS: z.coerce.number().int().min(60).max(604800).default(86400),
     AUTH_RESET_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
@@ -60,6 +71,29 @@ const environmentSchema = workerEnvironmentSchema
     MAILJET_SECRET_KEY: z.string().trim().min(1),
   })
   .superRefine((config, context) => {
+    if (
+      config.MCP_PUBLIC_ORIGIN &&
+      !config.MCP_PUBLIC_ORIGIN.startsWith('https://') &&
+      (config.NODE_ENV === 'production' ||
+        !['localhost', '127.0.0.1', '[::1]'].includes(
+          URL.parse(config.MCP_PUBLIC_ORIGIN)?.hostname ?? '',
+        ))
+    )
+      context.addIssue({
+        code: 'custom',
+        path: ['MCP_PUBLIC_ORIGIN'],
+        message: 'HTTPS required outside local development',
+      });
+    if (
+      config.MCP_OAUTH_COOKIE_KEY &&
+      config.NODE_ENV === 'production' &&
+      !config.MCP_PUBLIC_ORIGIN
+    )
+      context.addIssue({
+        code: 'custom',
+        path: ['MCP_PUBLIC_ORIGIN'],
+        message: 'Public HTTPS origin required for OAuth',
+      });
     if (config.NODE_ENV === 'production' && !config.PUBLIC_WEB_URL.startsWith('https://'))
       context.addIssue({
         code: 'custom',

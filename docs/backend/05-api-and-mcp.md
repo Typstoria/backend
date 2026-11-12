@@ -1,6 +1,6 @@
 # Контракти REST, MCP та подій
 
-Статус: проєктні контракти v0.1. Реалізація має опублікувати OpenAPI для REST та JSON Schema для MCP. Приклади нижче пояснюють цільову поведінку. Фактично реалізовані Identity endpoints описано у [10-authentication.md](10-authentication.md), створення/читання початкового проєкту — у [12-project-creation.md](12-project-creation.md); атомарні текстові saves — у [13-atomic-text-changes.md](13-atomic-text-changes.md); staging/attach/replace та скачування ресурсів — у [14-resource-uploads.md](14-resource-uploads.md); компіляція прийнятих ревізій — у [15-compilation.md](15-compilation.md); history/diff/restore — у [16-git-history.md](16-git-history.md); точні схеми є в автоматичному OpenAPI. Решта прикладів поки не реалізована.
+Статус: проєктні контракти v0.1. Реалізація має опублікувати OpenAPI для REST та JSON Schema для MCP. Приклади нижче пояснюють цільову поведінку. Фактично реалізовані Identity endpoints описано у [10-authentication.md](10-authentication.md), створення/читання початкового проєкту — у [12-project-creation.md](12-project-creation.md); атомарні текстові saves — у [13-atomic-text-changes.md](13-atomic-text-changes.md); staging/attach/replace та скачування ресурсів — у [14-resource-uploads.md](14-resource-uploads.md); компіляція прийнятих ревізій — у [15-compilation.md](15-compilation.md); history/diff/restore — у [16-git-history.md](16-git-history.md); точні схеми є в автоматичному OpenAPI. Пропозиції/review реалізовано за [18-proposals.md](18-proposals.md). PAT/OAuth та MCP реалізовано за [19-mcp-access.md](19-mcp-access.md). Решта майбутніх поверхонь поки не реалізована.
 
 ## 1. Спільні правила
 
@@ -82,6 +82,7 @@
   "baseRevisionId": "revision-10",
   "expectedProposalVersion": 3,
   "validationId": "validation-3",
+  "candidateManifestHash": "hash-переглянутого-кандидата",
   "acknowledgeCompileFailure": true
 }
 ```

@@ -7,7 +7,7 @@ export function createOpenApiDocument(app: INestApplication): OpenAPIObject {
   const config = new DocumentBuilder()
     .setTitle('Typstoria API')
     .setDescription(
-      'Typstoria API: accounts, Mailjet email confirmation, password recovery and private projects. ' +
+      'Typstoria API: accounts, private projects, revisions, resource uploads, PDF compilation, Git history and proposal review. ' +
         'POST /api/auth/login returns one accessToken. Paste it into Authorize; ' +
         'private requests use Authorization: Bearer <accessToken>. No CSRF or refresh tokens.',
     )

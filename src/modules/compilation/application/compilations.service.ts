@@ -1,7 +1,8 @@
-import { ConflictException, HttpException, Injectable, NotFoundException } from '@nestjs/common';
-import { DataSource, In } from 'typeorm';
+import { requireScope } from '../../../common/actor/access-policy';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { DataSource } from 'typeorm';
 import type { UserActor } from '../../../common/actor/actor';
-import { AuditEvent } from '../../audit/infrastructure/persistence/entities/audit-event.entity';
+import { lockCompileAdmission, queueCompilation } from '../infrastructure/queue-compilation';
 import { BlobStorage } from '../../files/infrastructure/blob-storage';
 import { Blob } from '../../files/infrastructure/persistence/entities/blob.entity';
 import { ProjectsService } from '../../projects/application/projects.service';
@@ -24,11 +25,10 @@ export class CompilationsService {
     input: CreateCompilationDto,
     requestId: string,
   ): Promise<CompilationDto> {
+    requireScope(actor, 'compile:run', 'documents:read');
     await this.projects.ownedProject(this.database.manager, actor, projectId);
     return this.database.transaction(async (manager) => {
-      await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
-        'compile:admission',
-      ]);
+      await lockCompileAdmission(manager);
       const project = await this.projects.ownedProject(manager, actor, projectId, true);
       const revision = await manager.findOneBy(ProjectRevision, {
         id: input.revisionId,
@@ -39,52 +39,19 @@ export class CompilationsService {
         id: revision.snapshotId,
         projectId,
       });
-      const active = { status: In(['queued', 'running']) };
-      if (
-        (await manager.countBy(CompileJob, { ...active, ownerId: actor.userId })) >= 20 ||
-        (await manager.countBy(CompileJob, active)) >= 200
-      )
-        throw new HttpException(
-          {
-            code: 'COMPILE_QUOTA_EXCEEDED',
-            message: 'Too many pending compilations; wait for existing jobs to finish',
-          },
-          429,
-        );
-      const job = await manager.save(
-        CompileJob,
-        manager.create(CompileJob, {
-          projectId,
-          ownerId: actor.userId,
-          revisionId: revision.id,
-          snapshotId: snapshot.id,
-          inputManifestHash: snapshot.manifestHash,
-          status: 'queued',
-          attempts: 0,
-          compilerFingerprint: null,
-          errorCode: null,
-          diagnostics: [],
-          artifactBlobId: null,
-          artifactExpiresAt: null,
-          leaseToken: null,
-          leaseExpiresAt: null,
-          startedAt: null,
-          finishedAt: null,
-        }),
-      );
-      await manager.insert(AuditEvent, {
-        projectId,
-        actorId: actor.userId,
-        credentialId: actor.credentialId,
-        channel: actor.channel,
-        action: 'compile.requested',
+      const job = await queueCompilation(
+        manager,
+        actor,
+        snapshot,
+        { revisionId: revision.id },
         requestId,
-      });
+      );
       return this.dto(job, project.currentRevisionId);
     });
   }
 
   async get(actor: UserActor, projectId: number, id: number): Promise<CompilationDto> {
+    requireScope(actor, 'compile:read', 'documents:read');
     const project = await this.projects.ownedProject(this.database.manager, actor, projectId);
     const job = await this.database.manager.findOneBy(CompileJob, {
       id,
@@ -92,10 +59,12 @@ export class CompilationsService {
       ownerId: actor.userId,
     });
     if (!job) throw new NotFoundException('Compilation not found');
+    if (job.proposalId !== null) requireScope(actor, 'changes:read');
     return this.dto(job, project.currentRevisionId);
   }
 
   async pdf(actor: UserActor, projectId: number, id: number): Promise<Buffer> {
+    requireScope(actor, 'compile:read', 'documents:read');
     await this.projects.ownedProject(this.database.manager, actor, projectId);
     const job = await this.database
       .getRepository(CompileJob)
@@ -108,6 +77,7 @@ export class CompilationsService {
       })
       .getOne();
     if (!job) throw new NotFoundException('Compilation not found');
+    if (job.proposalId !== null) requireScope(actor, 'changes:read');
     if (!this.available(job) || !job.artifactBlobId)
       throw new ConflictException({
         code: 'ARTIFACT_UNAVAILABLE',
@@ -138,6 +108,9 @@ export class CompilationsService {
       id: job.id,
       projectId: job.projectId,
       revisionId: job.revisionId,
+      proposalId: job.proposalId,
+      candidateVersion: job.candidateVersion,
+      candidateSnapshotId: job.proposalId === null ? null : job.snapshotId,
       status: job.status,
       errorCode: job.errorCode,
       inputManifestHash: job.inputManifestHash,

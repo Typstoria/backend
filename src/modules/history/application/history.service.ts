@@ -1,3 +1,4 @@
+import { requireWeb, requireScope } from '../../../common/actor/access-policy';
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource, IsNull } from 'typeorm';
 import type { UserActor } from '../../../common/actor/actor';
@@ -34,6 +35,7 @@ export class HistoryService {
     projectId: number,
     query: ListRevisionsQueryDto,
   ): Promise<RevisionListDto> {
+    requireScope(actor, 'history:read');
     const project = await this.projects.ownedProject(this.database.manager, actor, projectId);
     const builder = this.revisions(projectId)
       .orderBy('revision.number', 'DESC')
@@ -48,6 +50,7 @@ export class HistoryService {
   }
 
   async get(actor: UserActor, projectId: number, revisionId: number): Promise<RevisionDetailsDto> {
+    requireScope(actor, 'history:read');
     const project = await this.projects.ownedProject(this.database.manager, actor, projectId);
     const row = await this.revisions(projectId)
       .andWhere('revision.id = :revisionId', { revisionId })
@@ -63,6 +66,7 @@ export class HistoryService {
     key: string | undefined,
     requestId: string,
   ): Promise<RestoredRevisionDto> {
+    requireWeb(actor);
     await this.projects.ownedProject(this.database.manager, actor, projectId);
     key = requireIdempotencyKey(key);
     const operation = `projects:${projectId}:restore`;
@@ -136,6 +140,7 @@ export class HistoryService {
   }
 
   async retry(actor: UserActor, projectId: number, requestId: string): Promise<HistoryRetryDto> {
+    requireWeb(actor);
     return this.database.transaction(async (manager) => {
       await this.projects.ownedProject(manager, actor, projectId, true);
       const reset = await manager.update(

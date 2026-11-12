@@ -10,6 +10,6 @@ import { ProjectResourcesController } from './http/project-resources.controller'
   imports: [FilesModule],
   controllers: [ProjectsController, ProjectResourcesController],
   providers: [ProjectsService, ProjectChangesService, ProjectUploadsService],
-  exports: [ProjectsService],
+  exports: [ProjectsService, ProjectUploadsService],
 })
 export class ProjectsModule {}

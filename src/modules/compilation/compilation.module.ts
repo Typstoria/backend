@@ -15,5 +15,6 @@ import { SandboxTypstRunner } from './infrastructure/sandbox-typst-runner';
     { provide: TypstRunner, useClass: SandboxTypstRunner },
   ],
   controllers: [CompilationsController],
+  exports: [CompilationsService],
 })
 export class CompilationModule {}

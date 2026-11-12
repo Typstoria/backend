@@ -23,7 +23,15 @@ export class CompileDiagnosticDto {
 export class CompilationDto {
   @ApiProperty(entityIdSchema) id!: number;
   @ApiProperty(entityIdSchema) projectId!: number;
-  @ApiProperty(entityIdSchema) revisionId!: number;
+  @ApiProperty({
+    ...entityIdSchema,
+    nullable: true,
+    description: 'Accepted revision ID; null for proposal previews.',
+  })
+  revisionId!: number | null;
+  @ApiProperty({ ...entityIdSchema, nullable: true }) proposalId!: number | null;
+  @ApiProperty({ type: 'integer', nullable: true, minimum: 1 }) candidateVersion!: number | null;
+  @ApiProperty({ ...entityIdSchema, nullable: true }) candidateSnapshotId!: number | null;
   @ApiProperty({ enum: ['queued', 'running', 'succeeded', 'failed', 'timed_out', 'cancelled'] })
   status!: CompileStatus;
   @ApiProperty({ type: String, nullable: true }) errorCode!: CompileErrorCode | null;

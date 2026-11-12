@@ -1,3 +1,8 @@
+import { OAuthRecord } from '../../modules/access/oauth-record.entity';
+import { AccessGrant } from '../../modules/access/access-grant.entity';
+import { Proposal } from '../../modules/proposals/infrastructure/persistence/entities/proposal.entity';
+import { ProposalCandidate } from '../../modules/proposals/infrastructure/persistence/entities/proposal-candidate.entity';
+import { ProposalValidation } from '../../modules/proposals/infrastructure/persistence/entities/proposal-validation.entity';
 import { GitRevisionMapping } from '../../modules/history/infrastructure/persistence/entities/git-revision-mapping.entity';
 import { CompileJob } from '../../modules/compilation/infrastructure/persistence/entities/compile-job.entity';
 import { join } from 'node:path';
@@ -23,6 +28,8 @@ export function createDatabaseOptions(
     type: 'postgres',
     url: environment.DATABASE_URL,
     entities: [
+      AccessGrant,
+      OAuthRecord,
       User,
       WebSession,
       IdentityChallenge,
@@ -37,6 +44,9 @@ export function createDatabaseOptions(
       AuditEvent,
       CompileJob,
       GitRevisionMapping,
+      Proposal,
+      ProposalCandidate,
+      ProposalValidation,
     ],
     migrations: [join(__dirname, 'migrations', '*{.ts,.js}')],
     migrationsTableName: 'typeorm_migrations',

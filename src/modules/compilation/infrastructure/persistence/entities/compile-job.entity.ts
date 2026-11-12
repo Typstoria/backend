@@ -14,6 +14,16 @@ import type {
 } from '../../../domain/compilation';
 
 @Entity({ name: 'compile_jobs' })
+@Check(
+  'compile_jobs_target_check',
+  `("revision_id" IS NOT NULL AND "proposal_id" IS NULL AND "candidate_version" IS NULL) OR ("revision_id" IS NULL AND "proposal_id" IS NOT NULL AND "candidate_version" IS NOT NULL)`,
+)
+@ForeignKey(
+  'ProposalCandidate',
+  ['proposalId', 'candidateVersion', 'projectId', 'snapshotId'],
+  ['proposalId', 'version', 'projectId', 'snapshotId'],
+  { name: 'compile_jobs_candidate_fkey', deferrable: 'INITIALLY DEFERRED' },
+)
 @Index('compile_jobs_dispatch_idx', ['status', 'availableAt'])
 @Index('compile_jobs_owner_status_idx', ['ownerId', 'status'])
 @Check(
@@ -45,7 +55,10 @@ export class CompileJob {
   id!: number;
   @Column({ name: 'project_id', type: 'integer' }) projectId!: number;
   @Column({ name: 'owner_id', type: 'integer' }) ownerId!: number;
-  @Column({ name: 'revision_id', type: 'integer' }) revisionId!: number;
+  @Column({ name: 'revision_id', type: 'integer', nullable: true }) revisionId!: number | null;
+  @Column({ name: 'proposal_id', type: 'integer', nullable: true }) proposalId!: number | null;
+  @Column({ name: 'candidate_version', type: 'integer', nullable: true }) candidateVersion!:
+    number | null;
   @Column({ name: 'snapshot_id', type: 'integer' }) snapshotId!: number;
   @Column({ name: 'input_manifest_hash', type: 'varchar', length: 64 }) inputManifestHash!: string;
   @Column({ type: 'varchar', length: 16, default: 'queued' }) status!: CompileStatus;

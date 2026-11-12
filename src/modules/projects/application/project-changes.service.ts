@@ -1,14 +1,13 @@
+import { requireWeb } from '../../../common/actor/access-policy';
+import { stageSnapshot, writeSnapshot } from '../../revisions/infrastructure/write-snapshot';
 import { GitRevisionMapping } from '../../history/infrastructure/persistence/entities/git-revision-mapping.entity';
 import { ConflictException, Injectable } from '@nestjs/common';
-import { DataSource, In } from 'typeorm';
+import { DataSource } from 'typeorm';
 import type { UserActor } from '../../../common/actor/actor';
-import { BlobStorage, StoredBlob } from '../../files/infrastructure/blob-storage';
-import { Blob } from '../../files/infrastructure/persistence/entities/blob.entity';
-import { FileIdentity } from '../../files/infrastructure/persistence/entities/file-identity.entity';
+import { BlobStorage } from '../../files/infrastructure/blob-storage';
 import { snapshotManifestHash } from '../../revisions/domain/snapshot-manifest';
 import { ProjectSnapshot } from '../../revisions/infrastructure/persistence/entities/project-snapshot.entity';
 import { ProjectRevision } from '../../revisions/infrastructure/persistence/entities/project-revision.entity';
-import { SnapshotFile } from '../../revisions/infrastructure/persistence/entities/snapshot-file.entity';
 import { readSnapshotFiles } from '../infrastructure/persistence/read-snapshot-files';
 import { AuditEvent } from '../../audit/infrastructure/persistence/entities/audit-event.entity';
 import { Project } from '../infrastructure/persistence/entities/project.entity';
@@ -39,6 +38,7 @@ export class ProjectChangesService {
     key: string | undefined,
     requestId: string,
   ): Promise<ProjectChangesResultDto> {
+    requireWeb(actor);
     const project = await this.projects.ownedProject(this.database.manager, actor, projectId);
     key = requireIdempotencyKey(key);
     const operation = `projects:${projectId}:changes`;
@@ -84,14 +84,7 @@ export class ProjectChangesService {
 
     // Structural checks precede I/O. Immutable objects are published before the short DB transaction.
     // Concurrent saves/deletion are checked again after acquiring the project row lock.
-    const staged = new Map<string, StoredBlob>();
-    for (const file of draft.files) {
-      if (!unchanged && file.content !== undefined && !staged.has(file.sha256))
-        staged.set(
-          file.sha256,
-          await this.storage.put(actor.userId, Buffer.from(file.content, 'utf8')),
-        );
-    }
+    const staged = unchanged ? new Map() : await stageSnapshot(this.storage, actor.userId, draft);
 
     return this.database.transaction(async (manager) => {
       const current = await this.projects.ownedProject(manager, actor, projectId, true);
@@ -118,65 +111,14 @@ export class ProjectChangesService {
         return result;
       }
 
-      const blobIds = new Map<string, number>();
-      if (staged.size) {
-        await manager
-          .createQueryBuilder()
-          .insert()
-          .into(Blob)
-          .values(
-            [...staged.values()]
-              .sort((a, b) => a.sha256.localeCompare(b.sha256))
-              .map((blob) => ({
-                ...blob,
-                ownerId: actor.userId,
-                mediaType: 'text/plain; charset=utf-8',
-              })),
-          )
-          .orIgnore()
-          .execute();
-        const blobs = await manager.findBy(Blob, {
-          ownerId: actor.userId,
-          sha256: In([...staged.keys()]),
-        });
-        for (const blob of blobs) blobIds.set(blob.sha256, blob.id);
-      }
-      const createdFiles: ProjectChangesResultDto['createdFiles'] = [];
-      for (const file of draft.files) {
-        if (file.fileId < 0) {
-          const created = await manager.save(
-            FileIdentity,
-            manager.create(FileIdentity, { projectId }),
-          );
-          if (draft.mainFileId === file.fileId) draft.mainFileId = created.id;
-          file.fileId = created.id;
-          createdFiles.push({ fileId: created.id, path: file.path });
-        }
-        if (file.content !== undefined) file.blobId = blobIds.get(file.sha256)!;
-      }
-      const manifestHash = snapshotManifestHash(draft);
-      const snapshot = await manager.save(
-        ProjectSnapshot,
-        manager.create(ProjectSnapshot, {
-          projectId,
-          mainFileId: draft.mainFileId,
-          contextText: draft.contextText,
-          manifestHash,
-        }),
+      const { snapshot, createdFiles } = await writeSnapshot(
+        manager,
+        actor.userId,
+        projectId,
+        draft,
+        staged,
       );
-      await manager.insert(
-        SnapshotFile,
-        draft.files.map((file) => ({
-          snapshotId: snapshot.id,
-          fileId: file.fileId,
-          projectId,
-          ownerId: actor.userId,
-          normalizedPath: file.path,
-          blobId: file.blobId!,
-          contentKind: file.contentKind,
-          mediaType: file.mediaType,
-        })),
-      );
+      const manifestHash = snapshot.manifestHash;
       const accepted = await manager.save(
         ProjectRevision,
         manager.create(ProjectRevision, {

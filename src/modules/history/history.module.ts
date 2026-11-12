@@ -17,5 +17,6 @@ import { HistoryController } from './http/history.controller';
     { provide: GitRepository, useClass: LocalGitRepository },
   ],
   controllers: [HistoryController],
+  exports: [RevisionDiffService, HistoryService],
 })
 export class HistoryModule {}

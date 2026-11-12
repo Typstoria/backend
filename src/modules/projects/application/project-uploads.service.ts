@@ -1,3 +1,4 @@
+import { requireScope } from '../../../common/actor/access-policy';
 import {
   ConflictException,
   Injectable,
@@ -36,6 +37,7 @@ export class ProjectUploadsService {
     file: UploadedResource | undefined,
     requestId: string,
   ): Promise<ProjectUploadDto> {
+    requireScope(actor, 'uploads:stage');
     await this.projects.ownedProject(this.database.manager, actor, projectId);
     const metadata = await validateResourceFile(file);
     const content = file!.buffer;
@@ -82,6 +84,7 @@ export class ProjectUploadsService {
   }
 
   async get(actor: UserActor, projectId: number, uploadId: number): Promise<ProjectUploadDto> {
+    requireScope(actor, 'uploads:stage');
     await this.projects.ownedProject(this.database.manager, actor, projectId);
     const upload = await this.database.manager.findOneBy(StagedUpload, {
       id: uploadId,

@@ -1,11 +1,12 @@
-import { GitRevisionMapping } from '../../history/infrastructure/persistence/entities/git-revision-mapping.entity';
 import {
-  BadRequestException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import { DataSource, EntityManager, IsNull, LessThan } from 'typeorm';
+  hasScope,
+  requireProject,
+  requireScope,
+  requireWeb,
+} from '../../../common/actor/access-policy';
+import { GitRevisionMapping } from '../../history/infrastructure/persistence/entities/git-revision-mapping.entity';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { DataSource, EntityManager, In, IsNull, LessThan } from 'typeorm';
 import type { UserActor } from '../../../common/actor/actor';
 import { BlobStorage } from '../../files/infrastructure/blob-storage';
 import { Blob } from '../../files/infrastructure/persistence/entities/blob.entity';
@@ -44,7 +45,7 @@ export class ProjectsService {
     key: string | undefined,
     requestId: string,
   ): Promise<ProjectCreatedDto> {
-    this.requireWebActor(actor);
+    requireWeb(actor);
     key = requireIdempotencyKey(key);
     const payloadHash = mutationPayloadHash({ title });
 
@@ -192,16 +193,22 @@ export class ProjectsService {
   }
 
   async get(actor: UserActor, projectId: number): Promise<ProjectDto> {
+    requireScope(actor, 'projects:read');
     return this.projectDto(await this.ownedProject(this.database.manager, actor, projectId));
   }
 
   async list(actor: UserActor, limit: number, cursor?: number): Promise<ProjectListDto> {
-    this.requireWebActor(actor);
+    requireScope(actor, 'projects:read');
+    const ids =
+      actor.channel === 'mcp'
+        ? (actor.projectIds ?? []).filter((id) => cursor === undefined || id < cursor)
+        : undefined;
+    if (ids?.length === 0) return { items: [], nextCursor: null };
     const projects = await this.database.manager.find(Project, {
       where: {
         ownerId: actor.userId,
         deletedAt: IsNull(),
-        ...(cursor === undefined ? {} : { id: LessThan(cursor) }),
+        ...(ids ? { id: In(ids) } : cursor === undefined ? {} : { id: LessThan(cursor) }),
       },
       order: { id: 'DESC' },
       take: limit + 1,
@@ -216,6 +223,7 @@ export class ProjectsService {
     title: string,
     requestId: string,
   ): Promise<ProjectDto> {
+    requireWeb(actor);
     return this.database.transaction(async (manager) => {
       const project = await this.ownedProject(manager, actor, projectId, true);
       if (project.title === title) return this.projectDto(project);
@@ -234,6 +242,7 @@ export class ProjectsService {
   }
 
   async delete(actor: UserActor, projectId: number, requestId: string): Promise<void> {
+    requireWeb(actor);
     await this.database.transaction(async (manager) => {
       const project = await this.ownedProject(manager, actor, projectId, true);
       project.deletedAt = new Date();
@@ -251,6 +260,7 @@ export class ProjectsService {
 
   async state(actor: UserActor, projectId: number, revisionId?: number): Promise<ProjectStateDto> {
     const project = await this.ownedProject(this.database.manager, actor, projectId);
+    if (!hasScope(actor, 'context:read')) requireScope(actor, 'documents:read');
     const revision = await this.database.manager.findOneBy(ProjectRevision, {
       id: revisionId ?? project.currentRevisionId,
       projectId,
@@ -290,8 +300,8 @@ export class ProjectsService {
         createdAt: revision.createdAt.toISOString(),
       },
       mainFileId: snapshot.mainFileId,
-      contextText: snapshot.contextText,
-      tree,
+      contextText: hasScope(actor, 'context:read') ? snapshot.contextText : '',
+      tree: hasScope(actor, 'documents:read') ? tree : [],
     };
   }
 
@@ -301,6 +311,7 @@ export class ProjectsService {
     fileId: number,
     revisionId?: number,
   ): Promise<ProjectTextFileDto> {
+    requireScope(actor, 'documents:read');
     const { file, blob, revision } = await this.fileVersion(actor, projectId, fileId, revisionId);
     if (file.contentKind !== 'text')
       throw new BadRequestException('This endpoint reads text files only');
@@ -323,6 +334,7 @@ export class ProjectsService {
     fileId: number,
     revisionId?: number,
   ): Promise<{ filename: string; mediaType: string; content: Buffer }> {
+    requireScope(actor, 'documents:read');
     const { file, blob } = await this.fileVersion(actor, projectId, fileId, revisionId);
     return {
       filename: file.normalizedPath.split('/').at(-1)!,
@@ -367,17 +379,13 @@ export class ProjectsService {
     projectId: number,
     lock = false,
   ): Promise<Project> {
-    this.requireWebActor(actor);
+    requireProject(actor, projectId);
     const project = await manager.findOne(Project, {
       where: { id: projectId, ownerId: actor.userId, deletedAt: IsNull() },
       ...(lock ? { lock: { mode: 'pessimistic_write' as const } } : {}),
     });
     if (!project) throw new NotFoundException('Project not found');
     return project;
-  }
-
-  private requireWebActor(actor: UserActor): void {
-    if (actor.channel !== 'web') throw new ForbiddenException('A web session is required');
   }
 
   private projectDto(project: Project): ProjectDto {

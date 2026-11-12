@@ -37,6 +37,14 @@ export class AppConfigService {
   get swaggerEnabled(): boolean {
     return this.api.SWAGGER_ENABLED;
   }
+  get mcpOrigin(): string | undefined {
+    return (
+      this.api.MCP_PUBLIC_ORIGIN ?? (this.production ? undefined : `http://127.0.0.1:${this.port}`)
+    );
+  }
+  get mcpOAuthCookieKey(): string | undefined {
+    return this.api.MCP_OAUTH_COOKIE_KEY;
+  }
   get accessTokenTtlSeconds(): number {
     return this.api.AUTH_ACCESS_TOKEN_TTL_SECONDS;
   }
