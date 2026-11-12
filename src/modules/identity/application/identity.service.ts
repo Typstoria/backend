@@ -15,6 +15,8 @@ import {
 } from '../infrastructure/persistence/entities/identity-challenge.entity';
 import { User } from '../infrastructure/persistence/entities/user.entity';
 import { SessionService } from './session.service';
+import type { AuthRequest } from '../http/auth-request';
+import { WebSession } from '../infrastructure/persistence/entities/web-session.entity';
 
 @Injectable()
 export class IdentityService {
@@ -63,13 +65,46 @@ export class IdentityService {
     return { ...result, user };
   }
 
-  async sendChallenge(email: string, kind: ChallengeKind): Promise<void> {
+  async requestAccountDeletion(identity: NonNullable<AuthRequest['identity']>): Promise<void> {
+    await this.sendChallenge(identity.user.email, ChallengeKind.DeleteAccount, identity);
+  }
+
+  async sendChallenge(
+    email: string,
+    kind: ChallengeKind,
+    identity?: NonNullable<AuthRequest['identity']>,
+  ): Promise<void> {
     const mail = await this.database.transaction(async (manager) => {
       const user = await manager.findOne(User, {
         where: { normalizedEmail: normalizeEmail(email) },
-        select: { id: true, email: true, emailVerifiedAt: true, passwordHash: true },
+        select: {
+          id: true,
+          email: true,
+          emailVerifiedAt: true,
+          passwordHash: true,
+          authVersion: true,
+        },
         lock: { mode: 'pessimistic_write' },
       });
+      if (kind === ChallengeKind.DeleteAccount) {
+        const session = identity
+          ? await manager.findOneBy(WebSession, {
+              id: identity.session.id,
+              userId: identity.user.id,
+            })
+          : null;
+        if (
+          !user ||
+          !identity ||
+          user.id !== identity.user.id ||
+          !user.emailVerifiedAt ||
+          !session ||
+          session.revokedAt ||
+          session.expiresAt.getTime() <= Date.now() ||
+          session.authVersion !== user.authVersion
+        )
+          throw new UnauthorizedException('A valid Bearer access token is required');
+      }
       if (
         !user ||
         (kind === ChallengeKind.VerifyEmail && user.emailVerifiedAt) ||
@@ -102,7 +137,12 @@ export class IdentityService {
         }),
       );
       const verification = kind === ChallengeKind.VerifyEmail;
-      const link = `${this.config.publicWebUrl}/auth/${verification ? 'verify-email' : 'reset-password'}#token=${token}`;
+      const route = verification
+        ? 'verify-email'
+        : kind === ChallengeKind.DeleteAccount
+          ? 'delete-account'
+          : 'reset-password';
+      const link = `${this.config.publicWebUrl}/auth/${route}#token=${token}`;
       return createIdentityEmail({
         to: user.email,
         kind,
@@ -161,6 +201,11 @@ export class IdentityService {
       await manager.update(
         IdentityChallenge,
         { userId: user.id, kind, consumedAt: IsNull() },
+        { consumedAt: new Date() },
+      );
+      await manager.update(
+        IdentityChallenge,
+        { userId: user.id, kind: ChallengeKind.DeleteAccount, consumedAt: IsNull() },
         { consumedAt: new Date() },
       );
       return user.id;

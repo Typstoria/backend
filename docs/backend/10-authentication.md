@@ -83,3 +83,7 @@ npm run test:integration
 ```
 
 Тести з PostgreSQL перевіряють register/login без попередніх запитів за CSRF, відсутність Set-Cookie/refreshToken, автоматичний лист після register, відмову видавати токен до verify, заборону приватного доступу зі старим непідтвердженим токеном, відсутність автоматичного входу після verify/reset, незалежний cooldown 5 хвилин на листи обох видів і конкурентне повторне надсилання, видачу й expiry Bearer-токена, відмову приймати credentials через cookies/query/body, malformed/duplicate Authorization headers, Origin/CORS, DTO validation, email normalization/duplicates, одноразовість verify/reset, конкурентне споживання, відкликання всіх access tokens після reset, гонку зі старим login snapshot, ізоляцію токенів між користувачами, logout, відсутність маршрутів керування сесіями та rate limits. Mailjet transport тестується через підміну fetch. Integration suite видаляє тільки власні унікальні тестові accounts; пов'язані sessions/challenges видаляє FK CASCADE.
+
+## Налаштування акаунта
+
+Поточний GET me повертає також nullable ім’я та `hasPassword`; login UserDto містить ім’я. Реалізовано PATCH імені, зміну пароля з відкликанням усіх sessions та видалення через одноразове email-підтвердження. Деталі — у [18-account-settings.md](18-account-settings.md). Email і Google identity не редагуються.

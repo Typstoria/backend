@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { IdentityMailer } from '../../infrastructure/mail/identity-mailer';
 import { MailjetIdentityMailer } from '../../infrastructure/mail/mailjet-identity-mailer';
+import { AccountService } from './application/account.service';
 import { IdentityService } from './application/identity.service';
 import { GoogleAuthService } from './application/google-auth.service';
 import { SessionService } from './application/session.service';
@@ -26,6 +27,7 @@ import { WebSession } from './infrastructure/persistence/entities/web-session.en
   providers: [
     PasswordHasher,
     IdentityService,
+    AccountService,
     GoogleAuthService,
     GoogleTokenVerifier,
     SessionService,

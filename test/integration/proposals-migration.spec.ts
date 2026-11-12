@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
 import { createDatabaseOptions } from '../../src/infrastructure/database/database.options';
 import { validateDatabaseEnvironment } from '../../src/config/environment';
+import { AddProposals1793205600000 } from '../../src/infrastructure/database/migrations/1793205600000-AddProposals';
 
 it('migrates accepted jobs without losing data and supports reverting unused proposals', async () => {
   const schema = `proposals_${randomUUID().replaceAll('-', '')}`;
@@ -16,9 +17,15 @@ it('migrates accepted jobs without losing data and supports reverting unused pro
   });
   try {
     await database.initialize();
+    // Exercise this migration in isolation; later features may add migrations of their own.
+    const migrations = [...database.migrations];
+    const throughProposals = migrations.filter(
+      (migration) => Number(migration.constructor.name.slice(-13)) <= 1793205600000,
+    );
+    expect(throughProposals).toContainEqual(expect.any(AddProposals1793205600000));
+    database.migrations.splice(0, database.migrations.length, ...throughProposals);
     await database.runMigrations();
-    await database.undoLastMigration(); // MCP access
-    await database.undoLastMigration(); // proposals
+    await database.undoLastMigration();
     expect(await database.query("SELECT to_regclass('proposals') AS name")).toEqual([
       { name: null },
     ]);
@@ -65,7 +72,6 @@ it('migrates accepted jobs without losing data and supports reverting unused pro
       "INSERT INTO proposals (project_id,creator_id,channel,expires_at) VALUES (1,$1,'web',now()+interval '1 day') RETURNING id",
       [users[0]!.id],
     );
-    await database.undoLastMigration(); // MCP access
     await expect(database.undoLastMigration()).rejects.toThrow(
       'Cannot revert while proposals exist',
     );
@@ -74,6 +80,7 @@ it('migrates accepted jobs without losing data and supports reverting unused pro
     expect(await database.query('SELECT revision_id,status FROM compile_jobs')).toEqual([
       { revision_id: 1, status: 'queued' },
     ]);
+    database.migrations.splice(0, database.migrations.length, ...migrations);
     await database.runMigrations();
     expect((await database.driver.createSchemaBuilder().log()).upQueries).toEqual([]);
   } finally {

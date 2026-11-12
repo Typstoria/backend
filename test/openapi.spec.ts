@@ -19,6 +19,13 @@ describe('offline OpenAPI generation', () => {
           description: expect.stringContaining('EMAIL_NOT_VERIFIED'),
         });
         expect(document.paths['/api/auth/reset-password']?.post).toBeDefined();
+        expect(document.paths['/api/auth/me']?.patch?.security).toEqual([{ bearer: [] }]);
+        expect(document.paths['/api/auth/change-password']?.post?.responses['204']).toBeDefined();
+        expect(document.paths['/api/auth/request-account-deletion']?.post?.security).toEqual([
+          { bearer: [] },
+        ]);
+        expect(document.paths['/api/auth/delete-account']?.post?.security).toBeUndefined();
+        expect(document.paths['/api/auth/delete-account']?.post?.responses['204']).toBeDefined();
         expect(document.paths['/api/auth/google']?.post?.responses['200']).toBeDefined();
         expect(document.paths['/api/auth/google']?.post?.responses['503']).toBeDefined();
         expect(document.paths['/api/auth/google']?.post?.security).toBeUndefined();

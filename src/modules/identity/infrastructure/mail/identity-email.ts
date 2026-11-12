@@ -41,23 +41,42 @@ export function createIdentityEmail(options: {
   ttlSeconds: number;
 }): IdentityMail {
   const verification = options.kind === ChallengeKind.VerifyEmail;
-  const title = verification ? 'Підтвердіть вашу пошту' : 'Встановіть новий пароль';
-  const action = verification ? 'Підтвердити пошту' : 'Створити новий пароль';
-  const introduction = verification
-    ? 'Раді бачити вас у Typstoria. Підтвердіть електронну адресу, щоб почати працювати над вашими документами.'
-    : 'Ми отримали запит на відновлення доступу до вашого облікового запису Typstoria. Натисніть кнопку нижче, щоб встановити новий пароль.';
+  const deletion = options.kind === ChallengeKind.DeleteAccount;
+  const title = deletion
+    ? 'Підтвердіть видалення акаунта'
+    : verification
+      ? 'Підтвердіть вашу пошту'
+      : 'Встановіть новий пароль';
+  const action = deletion
+    ? 'Перейти до підтвердження'
+    : verification
+      ? 'Підтвердити пошту'
+      : 'Створити новий пароль';
+  const introduction = deletion
+    ? 'Ви запросили видалення облікового запису Typstoria. Після підтвердження акаунт і всі його проєкти буде видалено без можливості відновлення. Відкриття посилання саме по собі нічого не видаляє.'
+    : verification
+      ? 'Раді бачити вас у Typstoria. Підтвердіть електронну адресу, щоб почати працювати над вашими документами.'
+      : 'Ми отримали запит на відновлення доступу до вашого облікового запису Typstoria. Натисніть кнопку нижче, щоб встановити новий пароль.';
   const validity = `Посилання діє ${duration(options.ttlSeconds)} після надсилання та може бути використане лише один раз.`;
-  const notice = verification
-    ? 'Якщо ви не створювали обліковий запис у Typstoria, просто проігноруйте цей лист. Нічого робити не потрібно.'
-    : 'Якщо ви не надсилали цей запит, просто проігноруйте цей лист. Ваш пароль залишиться без змін.';
-  const preheader = verification
-    ? 'Один крок — і ваш простір для документів готовий.'
-    : 'Відновіть доступ до ваших документів у Typstoria.';
+  const notice = deletion
+    ? 'Якщо ви не надсилали цей запит, проігноруйте лист. Обліковий запис і проєкти залишаться без змін.'
+    : verification
+      ? 'Якщо ви не створювали обліковий запис у Typstoria, просто проігноруйте цей лист. Нічого робити не потрібно.'
+      : 'Якщо ви не надсилали цей запит, просто проігноруйте цей лист. Ваш пароль залишиться без змін.';
+  const preheader = deletion
+    ? 'Підтвердьте видалення облікового запису та всіх його проєктів.'
+    : verification
+      ? 'Один крок — і ваш простір для документів готовий.'
+      : 'Відновіть доступ до ваших документів у Typstoria.';
   const link = escapeHtml(options.link);
 
   return {
     to: options.to,
-    subject: verification ? 'Підтвердіть вашу пошту — Typstoria' : 'Відновлення пароля — Typstoria',
+    subject: deletion
+      ? 'Видалення акаунта — Typstoria'
+      : verification
+        ? 'Підтвердіть вашу пошту — Typstoria'
+        : 'Відновлення пароля — Typstoria',
     text: `${title}\n\n${introduction}\n\n${action}:\n${options.link}\n\n${validity}\n\n${notice}\n\nКоманда Typstoria`,
     html: `<!doctype html>
 <html lang="uk">
