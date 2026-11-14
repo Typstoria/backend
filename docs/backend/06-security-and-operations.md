@@ -24,21 +24,21 @@
 
 ## 3. Ізоляція компіляції
 
-Runner виконує **одну компіляцію в окремому sandbox/container**, не від імені процесу API. Оркестратор runner — довірений внутрішній сервіс з rootless runtime на host; це єдиний компонент, що створює sandbox. Host Docker socket не монтується в API, MCP чи сам compiler container.
+Runner виконує **одну компіляцію в окремому sandbox/container**, не від імені процесу API. Довірений compile worker працює на host і створює ephemeral Docker container через Docker CLI за замовчуванням; Linux adapter із Bubblewrap/systemd можна вибрати явно. Docker доступ потрібен лише worker process. Docker socket не монтується в API або compiler container. Контейнер має init та BusyBox timeout; додатковий довірений host watchdog переживає SIGKILL окремого worker process і видаляє контейнер за deadline. Docker adapter відмовляє в запуску всередині systemd service до налаштування незалежного watchdog unit/scope; для такого Linux deployment залишається `TYPST_RUNNER=linux`.
 
 У sandbox:
 
 - непривілейований UID, read-only root filesystem;
-- тільки input цього job як read-only mount, окремий output і bounded tmpfs;
+- тільки input цього job як read-only mount; PDF передається bounded pipe, scratch `tmp` обмежений;
 - вимкнена мережа, немає PostgreSQL/Redis/storage credentials;
 - CPU/memory/PID/output/time limits, `no-new-privileges`, dropped capabilities, seccomp;
 - мінімальний allowlisted environment, фіксовані binary, fonts/packages;
 - запуск без shell і без виконання довільних precompile scripts;
-- завершення всього process tree при timeout/cancel, прибирання scratch space.
+- примусове завершення та видалення всього контейнера при timeout/cancel; перед компіляцією worker прибирає власні залишкові compiler containers старші 90 секунд, scratch space старше години.
 
 Вхід Typst обмежується `--root` для job workspace. Typst сам обмежує файлові шляхи [project root](https://typst.app/docs/reference/foundations/path/), але це не замінює ОС-ізоляцію і ресурсні ліміти.
 
-Пакети попередньо завантажує окремий контрольований процес. Для кожної компіляції фіксуються версії та хеші package catalog і fonts. Довільний package download у compiler network namespace не дозволяється. Якщо пакет відсутній, повертається діагностика з його назвою, а не непередбачуваний fetch.
+Package catalog усередині sandbox порожній і read-only, а мережа вимкнена; package downloads під час компіляції неможливі. Embedded і project fonts доступні. Якщо потрібного пакета немає, compile повертає діагностику, а не запускає непередбачуваний fetch.
 
 LSP/Tinymist і парсери context materials також обробляють недовірений вміст, тому мають ізольовані процеси/сесії, квоти й timeout. Вебдовірені credentials не передаються в їхній environment. Preview не отримує менш суворих прав, ніж authoritative compile.
 
@@ -78,7 +78,7 @@ LSP/Tinymist і парсери context materials також обробляють
 
 ## 6. Запуск
 
-Для development Docker Compose запускає лише PostgreSQL. API, workers, storage і поштовий adapter запускаються на host; вони не додаються до локального Compose. API не потребує Redis чи storage для старту; Mailjet API credentials та підтверджений відправник потрібні в усіх середовищах. Для майбутньої локальної компіляції потрібен OS sandbox без Docker; локально вже перевірено Bubblewrap + systemd user cgroups; конфігурація та межі — у [15-compilation.md](15-compilation.md). Production provisioning залишається окремим acceptance кроком. Container runner вище описує production-варіант і не змінює локальне правило «лише БД у контейнері».
+Для development Docker Compose запускає лише PostgreSQL. API та workers запускаються на host; їх не додають як довгоживучі Compose services. За типової конфігурації compile worker створює окремі ephemeral compiler containers через host Docker CLI; це не змінює склад Compose. Для явного `TYPST_RUNNER=linux` потрібні Bubblewrap, prlimit і user systemd/cgroup v2. API не потребує Redis чи storage для старту; Mailjet API credentials та підтверджений відправник потрібні в усіх середовищах. Runner setup і межі — у [15-compilation.md](15-compilation.md).
 
 Для першого production deployment достатньо одного host із розділеними процесами й persistent volumes; масштабування до кількох host не є передумовою першої поставки. Підбір CPU/RAM робиться за load test, включно з Tinymist і extraction.
 

@@ -1,3 +1,4 @@
+import { hasRealTypstRunner, realTypstRunner } from '../fixtures/typst-runner';
 import { processQueuedCompilations } from '../../src/modules/compilation/infrastructure/process-queued-compilations';
 import { AuditEvent } from '../../src/modules/audit/infrastructure/persistence/entities/audit-event.entity';
 import 'dotenv/config';
@@ -16,7 +17,6 @@ import { CompilationsService } from '../../src/modules/compilation/application/c
 import { CompileProcessor } from '../../src/modules/compilation/application/compile-processor.service';
 import { TypstRunner, type CompileResult } from '../../src/modules/compilation/domain/compilation';
 import { CompileJob } from '../../src/modules/compilation/infrastructure/persistence/entities/compile-job.entity';
-import { SandboxTypstRunner } from '../../src/modules/compilation/infrastructure/sandbox-typst-runner';
 import { BlobStorage } from '../../src/modules/files/infrastructure/blob-storage';
 import { LocalBlobStorage } from '../../src/modules/files/infrastructure/local-blob-storage';
 import { SessionService } from '../../src/modules/identity/application/session.service';
@@ -449,13 +449,10 @@ describe('accepted revision compilation jobs', () => {
     expect((await download(second.id).expect(200)).body).toEqual(pdf);
   });
 
-  (process.env.TEST_TYPST_BINARY_PATH ? it : it.skip)(
+  (hasRealTypstRunner ? it : it.skip)(
     'compiles an uploaded resource through the real API, database worker, sandbox and private artifact storage',
     async () => {
-      const runner = new SandboxTypstRunner({
-        typstBinaryPath: process.env.TEST_TYPST_BINARY_PATH!,
-        compileWorkPath: join(root, 'scratch'),
-      } as AppConfigService);
+      const runner = realTypstRunner(join(root, 'scratch'));
       compile.mockImplementation((input, signal) => runner.compile(input, signal));
       const upload = await client()
         .post(`/api/projects/${project.projectId}/uploads`)

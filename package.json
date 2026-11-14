@@ -41,7 +41,8 @@
     "test:compiler": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config test/jest-compiler.config.cjs --runInBand",
     "worker:history": "node dist/cli/history-worker.js",
     "worker:history:dev": "ts-node src/cli/history-worker.ts",
-    "history:rebuild": "ts-node src/cli/rebuild-history.ts"
+    "history:rebuild": "ts-node src/cli/rebuild-history.ts",
+    "test:compiler:docker": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config test/jest-docker-compiler.config.cjs --runInBand"
   },
   "dependencies": {
     "@modelcontextprotocol/node": "2.1.2",

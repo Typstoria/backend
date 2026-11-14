@@ -25,6 +25,18 @@ const workerEnvironmentSchema = databaseEnvironmentSchema.extend({
   GIT_STORAGE_PATH: z.string().trim().min(1).default('.local/history'),
   GIT_BINARY_PATH: z.string().trim().min(1).default('/usr/bin/git'),
   TYPST_BINARY_PATH: z.string().trim().min(1).default('/usr/local/bin/typst'),
+  TYPST_RUNNER: z.enum(['docker', 'linux']).default('docker'),
+  TYPST_DOCKER_BINARY_PATH: z.string().trim().min(1).default('docker'),
+  TYPST_DOCKER_IMAGE: z
+    .string()
+    .trim()
+    .regex(
+      /^[a-z0-9][a-z0-9./:_-]*@sha256:[a-f0-9]{64}$/,
+      'Use a digest-pinned Docker image reference',
+    )
+    .default(
+      'ghcr.io/typst/typst:0.14.2@sha256:b756590c0713ca5707654f3035e345c1d25dece2051817c11cc5591ae89992d4',
+    ),
   COMPILE_WORK_PATH: z.string().trim().min(1).default('.local/compile'),
   BLOB_STORAGE_PATH: z.string().trim().min(1).default('.local/blobs'),
 });

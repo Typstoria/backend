@@ -28,23 +28,44 @@ Admission: до 20 queued/running jobs на owner і 200 глобально. П�
 
 Diagnostics: до 100 повідомлень із безпечним message, file ID/path, severity та `range=null`. Точні UTF-16 ranges ще не реалізовані.
 
-## Sandbox
+## Sandbox компілятора
 
-Збережено Linux adapter: Typst 0.14.2, Bubblewrap namespaces і transient systemd user cgroup. Потрібні host Typst, bwrap, prlimit, user systemd/cgroup v2; Docker використовується лише для PostgreSQL.
+`SandboxTypstRunner` готує immutable input для спроби, збирає diagnostics, перевіряє PDF і прибирає scratch workspace. Runtime ізольовано за `TypstSandbox` з двома адаптерами: типовий `DockerTypstSandbox` та явний `LinuxTypstSandbox`. Docker runner є стандартним (`TYPST_RUNNER=docker`); Linux вибирається через `TYPST_RUNNER=linux`. Помилка обраного runner повертається як помилка компіляції: перемикання або запуск Typst CLI без sandbox не відбувається.
 
-- 512 MiB RAM, без swap, 1 CPU, 32 tasks, 30 секунд lifetime.
-- Read-only input/runtime, окремий output і tmpfs; без host home, секретів та мережі.
-- До 25 MiB PDF та 256 KiB stdout/stderr; timeout/abort зупиняє cgroup.
-- Новий workspace для кожної спроби; контекст не потрапляє у filesystem компілятора.
-- Embedded/project fonts, порожній контрольований package catalog; runtime downloads відсутні.
-- Немає fallback на незахищений запуск CLI.
+Docker runner запускає окремий ephemeral контейнер для кожної спроби через host Docker CLI. Він використовує digest-pinned multiarch Typst 0.14.2 image за замовчуванням:
 
-Fingerprint враховує executable і runner policy. Production provisioning має відтворити ці гарантії.
+```text
+ghcr.io/typst/typst:0.14.2@sha256:b756590c0713ca5707654f3035e345c1d25dece2051817c11cc5591ae89992d4
+```
+
+Змінні worker:
+
+| Змінна                     | Значення за замовчуванням | Призначення                                      |
+| -------------------------- | ------------------------- | ------------------------------------------------ |
+| `TYPST_RUNNER`             | `docker`                  | `docker` або явна альтернатива `linux`           |
+| `TYPST_DOCKER_BINARY_PATH` | `docker`                  | Шлях до Docker CLI на host worker                |
+| `TYPST_DOCKER_IMAGE`       | digest-pinned image вище  | Docker image; приймаються лише digest references |
+| `TYPST_BINARY_PATH`        | `/usr/local/bin/typst`    | Host Typst executable для `TYPST_RUNNER=linux`   |
+
+Перед першим запуском worker завантаж image вручну. Runtime не підтягує `latest`, не завантажує образ автоматично й не перемикається на інший runner:
+
+```bash
+docker pull ghcr.io/typst/typst:0.14.2@sha256:b756590c0713ca5707654f3035e345c1d25dece2051817c11cc5591ae89992d4
+npm run worker:compile:dev
+```
+
+У контейнері запускається непривілейований UID 1000:1000; root filesystem read-only. Read-only монтуються Typst runtime та лише input поточної спроби. Host output directory не монтується: PDF до 25 MiB передається через stdout pipe, stderr обмежений 256 KiB. `tmp` — bounded tmpfs; package catalog порожній і read-only. Контейнер має `--network none`, dropped capabilities, `no-new-privileges`, вбудований seccomp profile, ліміти 512 MiB RAM без swap, 1 CPU та 32 PID. Контейнер має init process та фіксований entrypoint `/bin/busybox timeout -s KILL 30 /bin/typst`. Перед його запуском worker озброює окремий довірений host watchdog із 30-секундним deadline: він переживає SIGKILL окремого worker process та видаляє контейнер, навіть якщо compiler зупинив внутрішній watchdog. Watchdog отримує лише налаштування Docker CLI й назву контейнера, без credentials БД або пошти. Timeout/cancel видаляє весь контейнер; перед компіляцією worker прибирає залишкові compiler containers старше 90 секунд. Спільний оркестратор прибирає scratch після кожної спроби, а покинуті каталоги — після години. Деталі Docker CLI flags — у [офіційній документації Docker](https://docs.docker.com/reference/cli/docker/container/run/), pinned image — у [Typst package registry](https://github.com/typst/typst/pkgs/container/typst).
+
+Docker adapter наразі призначений для host-запуску через npm. У systemd service звичайний `KillMode=control-group` може завершити й detached watchdog разом із worker; тому за наявності `INVOCATION_ID` Docker adapter відмовляє в запуску, а не послаблює ізоляцію. Для такого Linux deployment використовується явний `TYPST_RUNNER=linux`. Docker deployment під systemd потребує watchdog в окремому unit/scope та окремої acceptance-перевірки; його provisioning у цей інкремент не входить.
+
+Linux adapter зберігає Bubblewrap namespaces і transient systemd user cgroup: потрібні host Typst, bwrap, prlimit, user systemd/cgroup v2. Його ліміти — 512 MiB RAM без swap, 1 CPU, 32 tasks, 30 секунд; до 25 MiB PDF та 256 KiB stdout/stderr. Він не є автоматичним fallback.
+
+Обидва adapter обмежують Typst до `/input`, ізолюють мережу та не передають host secrets. Використовуються project/embedded fonts і порожній package catalog; runtime package downloads відсутні. Fingerprint враховує executable/image та runner policy.
 
 ```bash
 npm run test:integration
-TYPST_BINARY_PATH=/absolute/path/to/typst npm run test:compiler
-TEST_TYPST_BINARY_PATH=/absolute/path/to/typst npm run test:integration
+npm run test:compiler:docker
+TEST_TYPST_DOCKER_IMAGE=ghcr.io/typst/typst:0.14.2@sha256:b756590c0713ca5707654f3035e345c1d25dece2051817c11cc5591ae89992d4 npm run test:integration
 ```
 
-Integration перевіряє справжні PostgreSQL polling, claim/retry/fencing, ownership, logout/delete та artifact storage. Остання команда додатково перевіряє API → DB worker → справжній sandbox. Для `test:compiler` потрібен справжній sandbox; тести не маскують його відсутність.
+`test:compiler:docker` запускає compiler tests з реальним Docker sandbox. Integration слід запускати з `DATABASE_URL` окремої тестової БД: перевірки черг обробляють доступні pending jobs, тому робоча БД з користувацькими даними для них непридатна. Integration перевіряє PostgreSQL polling, claim/retry/fencing, ownership, logout/delete та artifact storage. Опційна команда з `TEST_TYPST_DOCKER_IMAGE` додатково проходить API → DB worker → справжній Docker sandbox. Для компіляції потрібен робочий Docker daemon і завантажений pinned image.

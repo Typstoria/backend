@@ -1,4 +1,4 @@
-import { SandboxTypstRunner } from '../../src/modules/compilation/infrastructure/sandbox-typst-runner';
+import { hasRealTypstRunner, realTypstRunner } from '../fixtures/typst-runner';
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -710,13 +710,10 @@ describe('proposal review lifecycle', () => {
     expect((await state()).body.revision.id).toBe(project.revisionId);
   });
 
-  (process.env.TEST_TYPST_BINARY_PATH ? it : it.skip)(
+  (hasRealTypstRunner ? it : it.skip)(
     'compiles a real multi-file candidate with a PNG before acceptance',
     async () => {
-      const runner = new SandboxTypstRunner({
-        typstBinaryPath: process.env.TEST_TYPST_BINARY_PATH,
-        compileWorkPath: join(root, 'sandbox'),
-      } as AppConfigService);
+      const runner = realTypstRunner(join(root, 'sandbox'));
       compile.mockImplementation((input, signal) => runner.compile(input, signal));
       const upload = await client()
         .post(`${path()}/uploads`)

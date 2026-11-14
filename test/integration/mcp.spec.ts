@@ -1,3 +1,4 @@
+import { hasRealTypstRunner, realTypstRunner } from '../fixtures/typst-runner';
 import 'dotenv/config';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -22,7 +23,6 @@ import { mcpScopes } from '../../src/common/actor/access-policy';
 import { AccessGrant } from '../../src/modules/access/access-grant.entity';
 import { CompileProcessor } from '../../src/modules/compilation/application/compile-processor.service';
 import { TypstRunner } from '../../src/modules/compilation/domain/compilation';
-import { SandboxTypstRunner } from '../../src/modules/compilation/infrastructure/sandbox-typst-runner';
 import { BlobStorage } from '../../src/modules/files/infrastructure/blob-storage';
 import { LocalBlobStorage } from '../../src/modules/files/infrastructure/local-blob-storage';
 import { SessionService } from '../../src/modules/identity/application/session.service';
@@ -250,11 +250,8 @@ describe('P5 MCP and OAuth integration', () => {
   });
 
   it('uses a real SDK client to read, search, stage PNG, propose, validate, retrieve PDF and require web acceptance', async () => {
-    if (process.env.TEST_TYPST_BINARY_PATH) {
-      const runner = new SandboxTypstRunner({
-        typstBinaryPath: process.env.TEST_TYPST_BINARY_PATH,
-        compileWorkPath: join(root, 'sandbox'),
-      } as AppConfigService);
+    if (hasRealTypstRunner) {
+      const runner = realTypstRunner(join(root, 'sandbox'));
       compile.mockImplementation((input, signal) => runner.compile(input, signal));
     }
     const token = await pat();

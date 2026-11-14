@@ -19,6 +19,15 @@ export class AppConfigService {
   get typstBinaryPath(): string {
     return this.environment.TYPST_BINARY_PATH;
   }
+  get typstRunner(): 'docker' | 'linux' {
+    return this.environment.TYPST_RUNNER;
+  }
+  get typstDockerBinaryPath(): string {
+    return this.environment.TYPST_DOCKER_BINARY_PATH;
+  }
+  get typstDockerImage(): string {
+    return this.environment.TYPST_DOCKER_IMAGE;
+  }
   get compileWorkPath(): string {
     return this.environment.COMPILE_WORK_PATH;
   }

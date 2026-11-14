@@ -14,7 +14,7 @@
 | U06 | GitHub зберігає резервну копію з Typstoria                    | Односторонній push; pull/merge зовнішніх змін не реалізується                                                        |
 | U07 | Некомпільовані ШІ-правки можна прийняти з явним попередженням | Окремий web acknowledgement прив'язаний до перевіреної candidate version                                             |
 | U08 | TypeORM замість Prisma                                        | Entities, repositories та явні міграції; synchronize вимкнений у всіх середовищах                                    |
-| U09 | Для локального запуску тільки БД у контейнері                 | Compose містить лише PostgreSQL, API та інші процеси запускаються на host                                            |
+| U09 | Compose локального запуску містить лише БД                    | PostgreSQL — єдиний довгоживучий Compose service; host compile worker може створювати ephemeral sandbox containers   |
 | U10 | Потрібен Swagger                                              | UI `/docs`, JSON `/docs-json`, DTO і schemas фактичних endpoints                                                     |
 
 | U11 | Mailjet для підтвердження пошти та відновлення пароля | Send API v3.1 у всіх середовищах, ключі в environment, без локального збереження листів |
@@ -105,6 +105,8 @@
 | [SDK v2 documentation](https://ts.sdk.modelcontextprotocol.io/v2/)                                                                                                          | Вихідна документація для spike; точний API перевіряється за pinned release                                                             |
 | [Typst paths/project root](https://typst.app/docs/reference/foundations/path/)                                                                                              | Файлові межі Typst і `--root`                                                                                                          |
 | [Typst syntax](https://typst.app/docs/reference/syntax/)                                                                                                                    | Структура джерел і потреба в parser-aware outline                                                                                      |
+| [Docker container run](https://docs.docker.com/reference/cli/docker/container/run/)                                                                                         | Офіційна документація до runtime flags контейнера-компілятора                                                                          |
+| [Typst container package](https://github.com/typst/typst/pkgs/container/typst)                                                                                              | Офіційний registry образу Typst; конфігурація фіксує версію та digest                                                                  |
 | [Tinymist repository](https://github.com/Myriad-Dreamin/tinymist)                                                                                                           | Language service й editor integration; потрібна власна server isolation                                                                |
 | [git update-ref](https://git-scm.com/docs/git-update-ref)                                                                                                                   | Оновлення ref із перевіркою попереднього значення                                                                                      |
 | [BullMQ job IDs](https://docs.bullmq.io/guide/jobs/job-ids)                                                                                                                 | Історичний варіант; Redis transport вилучено                                                                                           |
@@ -115,9 +117,9 @@
 
 Після відповіді на Q01–Q03 уточнити календарний план і template fixtures. Після P0 записати exact versions, результати експериментів та підтверджені ADR; потім додати ERD/OpenAPI, згенеровані з фактичної реалізації. Не називати ці артефакти готовими до того, як їх створено і перевірено.
 
-## Реалізований локальний runner P3
+## Реалізований runner P3
 
-Рішення A10 для Linux development конкретизовано й перевірено: Typst 0.14.2 у Bubblewrap 0.6.1 під systemd user service з cgroup limits, без додаткового Docker-контейнера. Durable jobs після спрощення працюють безпосередньо через PostgreSQL. Протокол, fingerprint policy, негативні сценарії й поточні межі (порожній package catalog, range=null, production provisioning) — у [15-compilation.md](15-compilation.md). Це не закриває інші spikes P0 або Git частину P3.
+Рішення A10 реалізоване через `TypstSandbox` boundary зі спільним `SandboxTypstRunner` orchestration. Docker adapter є стандартним і запускає ephemeral container з pinned Typst 0.14.2 digest; Linux adapter із Bubblewrap/systemd доступний за явною конфігурацією. Обидва fail closed без автоматичного fallback. Durable jobs працюють через PostgreSQL. Ліміти, запуск і поточні межі описані у [15-compilation.md](15-compilation.md); compiler test suite охоплює обидва шляхи запуску.
 
 ## Реалізована Git-проєкція P3
 

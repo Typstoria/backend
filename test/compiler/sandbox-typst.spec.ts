@@ -5,6 +5,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AppConfigService } from '../../src/config/app-config.service';
 import { SandboxTypstRunner } from '../../src/modules/compilation/infrastructure/sandbox-typst-runner';
+import { LinuxTypstSandbox } from '../../src/modules/compilation/infrastructure/linux-typst-sandbox';
+const createRunner = (config: AppConfigService) =>
+  new SandboxTypstRunner(config, new LinuxTypstSandbox(config));
 import { pngResource } from '../fixtures/resources';
 
 describe('real Linux Typst sandbox', () => {
@@ -17,7 +20,7 @@ describe('real Linux Typst sandbox', () => {
   });
   beforeAll(async () => {
     root = await mkdtemp(join(tmpdir(), 'typstoria-runner-'));
-    runner = new SandboxTypstRunner({
+    runner = createRunner({
       typstBinaryPath: process.env.TYPST_BINARY_PATH ?? '/usr/local/bin/typst',
       compileWorkPath: root,
     } as AppConfigService);
@@ -95,7 +98,7 @@ describe('real Linux Typst sandbox', () => {
       '#!/usr/bin/python3\nimport subprocess, time\nsubprocess.Popen(["/usr/bin/python3", "-c", "import time; time.sleep(60)"])\ntime.sleep(60)\n',
     );
     await chmod(probe, 0o700);
-    const slow = new SandboxTypstRunner({
+    const slow = createRunner({
       typstBinaryPath: probe,
       compileWorkPath: root,
     } as AppConfigService);
@@ -121,7 +124,7 @@ describe('real Linux Typst sandbox', () => {
   });
 
   it('fails closed when the compiler is missing', async () => {
-    const missing = new SandboxTypstRunner({
+    const missing = createRunner({
       typstBinaryPath: join(root, 'missing'),
       compileWorkPath: root,
     } as AppConfigService);
@@ -137,7 +140,7 @@ describe('real Linux Typst sandbox', () => {
     await mkdir(recent);
     const past = new Date(Date.now() - 2 * 60 * 60 * 1000);
     await utimes(old, past, past);
-    const freshRunner = new SandboxTypstRunner({
+    const freshRunner = createRunner({
       typstBinaryPath: process.env.TYPST_BINARY_PATH ?? '/usr/local/bin/typst',
       compileWorkPath: root,
     } as AppConfigService);
@@ -182,7 +185,7 @@ open('/output/document.pdf', 'wb').write(b'%PDF-1.7\\nprobe\\n%%EOF')
     );
     await chmod(probe, 0o700);
     try {
-      const isolated = new SandboxTypstRunner({
+      const isolated = createRunner({
         typstBinaryPath: probe,
         compileWorkPath: root,
       } as AppConfigService);
@@ -203,7 +206,7 @@ open('/output/document.pdf', 'wb').write(b'%PDF-1.7\\nprobe\\n%%EOF')
     );
     await chmod(probe, 0o700);
     try {
-      const limited = new SandboxTypstRunner({
+      const limited = createRunner({
         typstBinaryPath: probe,
         compileWorkPath: root,
       } as AppConfigService);

@@ -1,10 +1,10 @@
 # Typstoria — серверна частина
 
-Реалізовано початковий каркас **NestJS + TypeORM + PostgreSQL**: модулі предметних областей, конфігурацію, міграції, health endpoints, Swagger/OpenAPI, обробку помилок, request ID, тести та CI. Реалізовано також реєстрацію, вхід/вихід, один Bearer access token без refresh/cookies, підтвердження пошти й відновлення пароля через Mailjet та rate limits. Перший сценарій P2 створює приватний проєкт із порожнім `main.typ` і ревізією №1 та дозволяє прочитати його стан, переглянути список власних проєктів, перейменувати або м’яко видалити проєкт. Працює також атомарне редагування текстових файлів і контексту з новою ревізією. Працюють staging uploads ресурсів, їх атомарне додавання/заміна та скачування з поточної або історичної ревізії. Асинхронна компіляція прийнятої ревізії в PDF через окремий worker і Linux sandbox також працює. Git writer, історія/diff ревізій та restore також працюють. Працюють пропозиції з вебпереглядом і MCP з PAT та OAuth. Документація розрізняє реалізовані сценарії та цільову систему.
+Реалізовано початковий каркас **NestJS + TypeORM + PostgreSQL**: модулі предметних областей, конфігурацію, міграції, health endpoints, Swagger/OpenAPI, обробку помилок, request ID, тести та CI. Реалізовано також реєстрацію, вхід/вихід, один Bearer access token без refresh/cookies, підтвердження пошти й відновлення пароля через Mailjet та rate limits. Перший сценарій P2 створює приватний проєкт із порожнім `main.typ` і ревізією №1 та дозволяє прочитати його стан, переглянути список власних проєктів, перейменувати або м’яко видалити проєкт. Працює також атомарне редагування текстових файлів і контексту з новою ревізією. Працюють staging uploads ресурсів, їх атомарне додавання/заміна та скачування з поточної або історичної ревізії. Асинхронна компіляція прийнятої ревізії в PDF використовує Docker-isolated worker runner за замовчуванням і Linux sandbox як явну альтернативу. Git writer, історія/diff ревізій та restore також працюють. Працюють пропозиції з вебпереглядом і MCP з PAT та OAuth. Документація розрізняє реалізовані сценарії та цільову систему.
 
 ## Локальний запуск
 
-Потрібні Node.js **24.15+ у гілці 24 LTS**, npm і Docker Compose v2. Файл `.nvmrc` задає Node 24. **У контейнері працює тільки PostgreSQL. API запускається локально.**
+Потрібні Node.js **24.15+ у гілці 24 LTS**, npm, Docker Engine і Docker Compose v2. Файл `.nvmrc` задає Node 24. Compose запускає PostgreSQL; API та compile worker працюють локально. Compile worker через host Docker CLI запускає окремий тимчасовий контейнер на кожну спробу компіляції.
 
 ```bash
 nvm install
@@ -32,7 +32,7 @@ API має префікс `/api`; health і документація досту�
 
 `/api/auth`: `register`, `login`, `me`, `logout`, `resend-verification`, `verify-email`, `forgot-password`, `reset-password`. Керування сесіями через окремі API-маршрути відсутнє. Приватні маршрути за замовчуванням потребують підтвердженої пошти.
 
-Пошта надсилається виключно через Mailjet, зокрема під час локальної розробки. Перед запуском заповни `MAIL_FROM`, `MAILJET_API_KEY`, `MAILJET_SECRET_KEY` у `.env`; відправник має бути підтверджений у Mailjet. `PUBLIC_WEB_URL` — адреса фронтенду для посилань. Без цих трьох налаштувань API не стартує. Листи на диск не записуються; додаткових контейнерів немає.
+Пошта надсилається виключно через Mailjet, зокрема під час локальної розробки. Перед запуском заповни `MAIL_FROM`, `MAILJET_API_KEY`, `MAILJET_SECRET_KEY` у `.env`; відправник має бути підтверджений у Mailjet. `PUBLIC_WEB_URL` — адреса фронтенду для посилань. Без цих трьох налаштувань API не стартує. Листи на диск не записуються.
 
 Після реєстрації автоматично надсилається лист підтвердження. До підтвердження login повертає 403 `EMAIL_NOT_VERIFIED` без токена; приватні функції недоступні. Повторний лист — раз на 5 хвилин. Підтвердження пошти та reset самі по собі не авторизують.
 
@@ -68,7 +68,7 @@ References доступні для повторного використання
 
 `POST /api/projects/:id/compilations` із `{ "revisionId": 1 }` без `Idempotency-Key` повертає 202 і job ID. `GET /compilations/:jobId` показує статус, diagnostics, `isCurrent` та `artifactAvailable`; `/compilations/:jobId/pdf` приватно віддає результат успішної задачі. Source не змінюється; старий PDF залишається прив'язаним до своєї ревізії.
 
-Потрібен окремий `npm run worker:compile:dev` (після build — `npm run worker:compile`). Задачі зберігаються в PostgreSQL і чекають worker при його недоступності. Локальний runner використовує Typst 0.14.2, Bubblewrap і systemd user cgroups; Docker залишається лише для БД. Задай `TYPST_BINARY_PATH` у `.env`. Зовнішні пакети `@preview/...` зараз недоступні; fonts із проєкту та embedded fonts підтримуються. Контракт, обмеження й перевірки — у [15-compilation.md](docs/backend/15-compilation.md).
+Потрібен окремий `npm run worker:compile:dev` (після build — `npm run worker:compile`). Задачі зберігаються в PostgreSQL і чекають worker при його недоступності. Типовий runner запускає кожну спробу в окремому контейнері з digest-pinned Typst 0.14.2 образом. Перед першою компіляцією завантаж образ: `docker pull ghcr.io/typst/typst:0.14.2@sha256:b756590c0713ca5707654f3035e345c1d25dece2051817c11cc5591ae89992d4`. Для явного Linux sandbox задай `TYPST_RUNNER=linux` та `TYPST_BINARY_PATH`; автоматичного fallback немає. Зовнішні пакети `@preview/...` зараз недоступні; fonts із проєкту та embedded fonts підтримуються. Контракт, обмеження й перевірки — у [15-compilation.md](docs/backend/15-compilation.md).
 
 ## Історія та відновлення
 
@@ -134,7 +134,7 @@ API і CLI використовують спільні database options. `null`/
 
 Змінні оточення перевіряються до старту: порт, PostgreSQL URL, явні boolean, точні CORS origins, pool/timeouts. Production потребує власних credentials; локальні приклади для нього не підходять. Зміна `POSTGRES_*` після першого створення volume не змінює вже наявного користувача/пароля в PostgreSQL — використовуй SQL-міграцію налаштувань або нову локальну БД, зберігши потрібні дані.
 
-Redis, S3, Typst і Tinymist не є залежностями старту API. Для compile worker потрібні PostgreSQL і sandboxed Typst на host; Redis не використовується. Для source blobs уже працює приватний локальний storage. Решта adapters і workers додаються у відповідних інкрементах. Локальна вимога зберігається: за потреби вони запускаються на host, а не додаються до Compose.
+Redis, S3 і Tinymist не є залежностями старту API. Для compile worker потрібні PostgreSQL і доступний Docker daemon; за замовчуванням runner використовує pinned Typst image, а Linux sandbox можна вибрати явно. Redis не використовується. Для source blobs уже працює приватний локальний storage. Compose як і раніше містить лише PostgreSQL; compile worker створює контейнери на окремі спроби, не додаючи довгоживучий compiler service.
 
 ## Структура
 
@@ -180,7 +180,7 @@ compose.yaml                 # лише PostgreSQL
 | [12-project-creation.md](docs/backend/12-project-creation.md)                 | CRUD проєктів, початкова ревізія, storage та idempotency        |
 | [13-atomic-text-changes.md](docs/backend/13-atomic-text-changes.md)           | Атомарні текстові saves, конфлікти, квоти й історичне читання   |
 | [14-resource-uploads.md](docs/backend/14-resource-uploads.md)                 | Staging ресурсів, attach/replace, приватне історичне скачування |
-| [15-compilation.md](docs/backend/15-compilation.md)                           | PostgreSQL jobs, Linux sandbox, diagnostics та PDF              |
+| [15-compilation.md](docs/backend/15-compilation.md)                           | PostgreSQL jobs, Docker/Linux sandboxes, diagnostics та PDF     |
 | [16-git-history.md](docs/backend/16-git-history.md)                           | Приватна Git-проєкція, revisions/diff, restore, retry/recovery  |
 
 Рекомендований порядок читання: 01 → 02 → 04 → 07, потім деталізація моделі та API. Реєстр у файлі 08 відокремлює погоджені рішення від запропонованих технічних деталей.

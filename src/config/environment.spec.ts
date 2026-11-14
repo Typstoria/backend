@@ -87,6 +87,31 @@ describe('environment validation', () => {
     expect(() => validateEnvironment(database)).toThrow('Invalid environment variables');
   });
 
+  it('defaults workers to the pinned Docker runner and accepts the Linux runner', () => {
+    expect(validateWorkerEnvironment({ DATABASE_URL: base.DATABASE_URL })).toMatchObject({
+      TYPST_RUNNER: 'docker',
+      TYPST_DOCKER_BINARY_PATH: 'docker',
+      TYPST_DOCKER_IMAGE:
+        'ghcr.io/typst/typst:0.14.2@sha256:b756590c0713ca5707654f3035e345c1d25dece2051817c11cc5591ae89992d4',
+    });
+    expect(
+      validateWorkerEnvironment({ DATABASE_URL: base.DATABASE_URL, TYPST_RUNNER: 'linux' })
+        .TYPST_RUNNER,
+    ).toBe('linux');
+  });
+
+  it.each([
+    { TYPST_RUNNER: 'native' },
+    { TYPST_DOCKER_BINARY_PATH: '   ' },
+    { TYPST_DOCKER_IMAGE: '' },
+    { TYPST_DOCKER_IMAGE: 'ghcr.io/typst/typst:0.14.2' },
+    { TYPST_DOCKER_IMAGE: 'ghcr.io/typst/typst:0.14.2@sha256:not-a-digest' },
+  ])('rejects invalid worker runner configuration: %j', (invalid) => {
+    expect(() =>
+      validateWorkerEnvironment({ DATABASE_URL: base.DATABASE_URL, ...invalid }),
+    ).toThrow('Invalid environment variables');
+  });
+
   it('does not expose secret values in validation errors', () => {
     expect(() => validateEnvironment({ ...base, DATABASE_URL: 'invalid-private-secret' })).toThrow(
       /^Invalid environment variables: DATABASE_URL$/,
