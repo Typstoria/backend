@@ -41,8 +41,15 @@ export interface CompileResult {
 export const COMPILE_LEASE_MS = 90_000;
 export const COMPILE_ATTEMPTS = 3;
 export const MAX_PDF_BYTES = 25 * 1024 * 1024;
+export const MAX_PREVIEW_BYTES = 2 * 1024 * 1024;
+export const MAX_PREVIEW_DIMENSION = 4096;
+export const MAX_PREVIEW_PIXELS = 8_000_000;
 export const ARTIFACT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export abstract class TypstRunner {
   abstract compile(input: CompileInput, signal?: AbortSignal): Promise<CompileResult>;
+
+  async preview(_input: CompileInput, _signal?: AbortSignal): Promise<Buffer> {
+    throw new Error('Preview is not supported by this Typst runner');
+  }
 }

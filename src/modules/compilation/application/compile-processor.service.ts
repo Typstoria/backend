@@ -96,8 +96,14 @@ export class CompileProcessor {
         return;
       }
       if (
-        (await manager.countBy(CompileJob, { status: 'running' })) >= 2 ||
-        (await manager.countBy(CompileJob, { status: 'running', ownerId: job.ownerId })) >= 1
+        (await manager.countBy(CompileJob, [
+          { status: 'running' },
+          { previewStatus: 'running' },
+        ])) >= 2 ||
+        (await manager.countBy(CompileJob, [
+          { status: 'running', ownerId: job.ownerId },
+          { previewStatus: 'running', ownerId: job.ownerId },
+        ])) >= 1
       )
         return;
       const token = randomUUID();
@@ -126,7 +132,7 @@ export class CompileProcessor {
     return result.affected === 1;
   }
 
-  private async input(job: CompileJob): Promise<CompileInput> {
+  async input(job: CompileJob): Promise<CompileInput> {
     const snapshot = await this.database.manager.findOneByOrFail(ProjectSnapshot, {
       id: job.snapshotId,
       projectId: job.projectId,
@@ -202,6 +208,8 @@ export class CompileProcessor {
           leaseToken: null,
           leaseExpiresAt: null,
           availableAt: new Date(Date.now() + (retry ? job.attempts * 5000 : 0)),
+          previewStatus: artifactBlobId && job.proposalId === null ? 'queued' : null,
+          previewAvailableAt: artifactBlobId && job.proposalId === null ? new Date() : null,
           artifactBlobId,
           artifactExpiresAt: artifactBlobId ? new Date(Date.now() + ARTIFACT_TTL_MS) : null,
           finishedAt: retry ? null : new Date(),

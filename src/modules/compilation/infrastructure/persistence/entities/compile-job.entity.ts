@@ -14,6 +14,12 @@ import type {
 } from '../../../domain/compilation';
 
 @Entity({ name: 'compile_jobs' })
+@Index('compile_jobs_preview_dispatch_idx', ['previewStatus', 'previewAvailableAt'])
+@Check(
+  'compile_jobs_preview_status_check',
+  `"preview_status" IS NULL OR "preview_status" IN ('queued', 'running', 'ready', 'failed', 'skipped')`,
+)
+@Check('compile_jobs_preview_attempts_check', '"preview_attempts" >= 0 AND "preview_attempts" <= 3')
 @Check(
   'compile_jobs_target_check',
   `("revision_id" IS NOT NULL AND "proposal_id" IS NULL AND "candidate_version" IS NULL) OR ("revision_id" IS NULL AND "proposal_id" IS NOT NULL AND "candidate_version" IS NOT NULL)`,
@@ -77,6 +83,15 @@ export class CompileJob {
   artifactBlobId!: number | null;
   @Column({ name: 'artifact_expires_at', type: 'timestamptz', nullable: true })
   artifactExpiresAt!: Date | null;
+  @Column({ name: 'preview_status', type: 'varchar', length: 16, nullable: true })
+  previewStatus!: 'queued' | 'running' | 'ready' | 'failed' | 'skipped' | null;
+  @Column({ name: 'preview_attempts', type: 'integer', default: 0 }) previewAttempts!: number;
+  @Column({ name: 'preview_available_at', type: 'timestamptz', nullable: true })
+  previewAvailableAt!: Date | null;
+  @Column({ name: 'preview_lease_token', type: 'uuid', nullable: true, select: false })
+  previewLeaseToken!: string | null;
+  @Column({ name: 'preview_lease_expires_at', type: 'timestamptz', nullable: true })
+  previewLeaseExpiresAt!: Date | null;
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' }) createdAt!: Date;
   @Column({ name: 'started_at', type: 'timestamptz', nullable: true }) startedAt!: Date | null;
   @Column({ name: 'finished_at', type: 'timestamptz', nullable: true }) finishedAt!: Date | null;

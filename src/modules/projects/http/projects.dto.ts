@@ -70,7 +70,25 @@ export class ProjectCreatedDto {
   historySyncStatus!: 'pending' | 'ready' | 'failed';
 }
 
+export class ProjectPreviewDto {
+  @ApiProperty(entityId)
+  revisionId!: number;
+
+  @ApiProperty({ pattern: '^[a-f0-9]{64}$' })
+  version!: string;
+}
+
+export class ProjectPreviewQueryDto {
+  @IsOptional()
+  @IsString()
+  @Matches(/^[a-f0-9]{64}$/)
+  version?: string;
+}
+
 export class ProjectDto {
+  @ApiProperty({ type: ProjectPreviewDto, nullable: true, required: false })
+  preview?: ProjectPreviewDto | null;
+
   @ApiProperty(entityId)
   id!: number;
 

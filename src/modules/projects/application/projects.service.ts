@@ -343,6 +343,32 @@ export class ProjectsService {
     };
   }
 
+  async preview(actor: UserActor, projectId: number, version?: string): Promise<Buffer> {
+    requireScope(actor, 'documents:read');
+    await this.ownedProject(this.database.manager, actor, projectId);
+    const project = await this.database
+      .getRepository(Project)
+      .createQueryBuilder('project')
+      .addSelect('project.previewBlobId')
+      .where(
+        'project.id = :projectId AND project.ownerId = :ownerId AND project.deletedAt IS NULL',
+        { projectId, ownerId: actor.userId },
+      )
+      .getOne();
+    if (!project?.previewBlobId || (version && version !== project.previewVersion))
+      throw new NotFoundException('Preview not found');
+    const blob = await this.database
+      .getRepository(Blob)
+      .createQueryBuilder('blob')
+      .addSelect('blob.storageKey')
+      .where('blob.id = :id AND blob.ownerId = :ownerId', {
+        id: project.previewBlobId,
+        ownerId: actor.userId,
+      })
+      .getOneOrFail();
+    return this.storage.read(actor.userId, blob);
+  }
+
   private async fileVersion(
     actor: UserActor,
     projectId: number,
@@ -391,6 +417,10 @@ export class ProjectsService {
   private projectDto(project: Project): ProjectDto {
     return {
       id: project.id,
+      preview:
+        project.previewRevisionId && project.previewVersion
+          ? { revisionId: project.previewRevisionId, version: project.previewVersion }
+          : null,
       title: project.title,
       currentRevisionId: project.currentRevisionId,
       createdAt: project.createdAt.toISOString(),

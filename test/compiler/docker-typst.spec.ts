@@ -98,6 +98,29 @@ esac
     expect(await readdir(root)).toEqual([]);
   });
 
+  it('exports only the first page as a bounded 72 ppi PNG while PDF compilation remains available', async () => {
+    const input = {
+      mainFileId: 1,
+      files: [file('main.typ', '= First page\n#pagebreak()\n= Second page')],
+    };
+    const compiled = await runner.compile(input);
+    expect(compiled).toMatchObject({ status: 'succeeded', errorCode: null });
+    expect(compiled.pdf?.subarray(0, 5).toString()).toBe('%PDF-');
+    const pageMarkers = compiled.pdf!.toString('latin1').match(/\/Type\s*\/Page\b/g) ?? [];
+    expect(pageMarkers.length).toBeGreaterThanOrEqual(2);
+
+    const preview = await runner.preview(input);
+    expect(preview.length).toBeGreaterThan(24);
+    expect(preview.length).toBeLessThanOrEqual(2 * 1024 * 1024);
+    expect(preview.subarray(0, 8)).toEqual(
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
+    expect(preview.toString('ascii', 12, 16)).toBe('IHDR');
+    expect(preview.readUInt32BE(16)).toBeGreaterThan(0);
+    expect(preview.readUInt32BE(20)).toBeGreaterThan(0);
+    expect(await readdir(root)).toEqual([]);
+  });
+
   it('reports actual syntax errors and cannot access outside files or download packages', async () => {
     const broken = await runner.compile({
       mainFileId: 1,

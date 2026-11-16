@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { AppConfigService } from '../../../config/app-config.service';
+import { MAX_PDF_BYTES, MAX_PREVIEW_BYTES } from '../domain/compilation';
 import {
   SANDBOX_POLICY,
   typstArguments,
@@ -27,6 +28,8 @@ export class LinuxTypstSandbox implements TypstSandbox {
   }
 
   async execute(workspace: SandboxWorkspace, signal?: AbortSignal): Promise<SandboxExecution> {
+    const format = workspace.format ?? 'pdf';
+    const outputLimit = format === 'png' ? MAX_PREVIEW_BYTES : MAX_PDF_BYTES;
     const uid = process.getuid?.();
     const gid = process.getgid?.();
     if (process.platform !== 'linux' || !uid || gid === undefined)
@@ -64,7 +67,7 @@ export class LinuxTypstSandbox implements TypstSandbox {
       'SystemCallFilter=~@reboot @swap @raw-io @obsolete @debug @keyring',
       '--',
       '/usr/bin/prlimit',
-      '--fsize=26214400',
+      `--fsize=${outputLimit}`,
       '--core=0',
       '--nofile=128',
       '--cpu=30',
@@ -122,7 +125,7 @@ export class LinuxTypstSandbox implements TypstSandbox {
       '--chdir',
       '/input',
       '/runtime/typst',
-      ...typstArguments(workspace.entrypoint),
+      ...typstArguments(workspace.entrypoint, `/output/document.${format}`, format),
     ];
 
     return this.executeUnit(unit, args, signal);

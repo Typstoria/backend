@@ -1,3 +1,4 @@
+import { PreviewProcessor } from './application/preview-processor.service';
 import { Module } from '@nestjs/common';
 import { AppConfigService } from '../../config/app-config.service';
 import { ConfigurationModule } from '../../config/configuration.module';
@@ -13,6 +14,7 @@ import { SandboxTypstRunner } from './infrastructure/sandbox-typst-runner';
   imports: [ConfigurationModule.forRoot('worker'), DatabaseModule, FilesModule],
   providers: [
     CompileProcessor,
+    PreviewProcessor,
     {
       provide: TypstRunner,
       useFactory: (config: AppConfigService) =>

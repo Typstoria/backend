@@ -236,6 +236,10 @@ describe('proposal review lifecycle', () => {
       .auth(token, { type: 'bearer' })
       .expect(200);
     expect(preview.headers['content-type']).toContain('application/pdf');
+    expect(
+      (await database.manager.findOneByOrFail(CompileJob, { id: validation.compileJobId! }))
+        .previewStatus,
+    ).toBeNull();
     const checked = await client()
       .get(`${path()}/proposals/${proposal.id}/validations/${validation.id}`)
       .auth(token, { type: 'bearer' })

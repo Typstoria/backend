@@ -3,6 +3,7 @@ export interface SandboxWorkspace {
   source: string;
   output: string;
   entrypoint: string;
+  format?: 'pdf' | 'png';
 }
 
 export interface SandboxExecution {
@@ -22,7 +23,11 @@ export const SANDBOX_POLICY =
   '512MiB;1CPU;32tasks;30s;25MiBpdf;256KiBlogs;embedded-fonts;empty-packages;epoch0;short-diagnostics';
 
 /** Both adapters use identical compiler inputs, flags and deterministic output policy. */
-export function typstArguments(entrypoint: string, output = '/output/document.pdf'): string[] {
+export function typstArguments(
+  entrypoint: string,
+  output = '/output/document.pdf',
+  format: 'pdf' | 'png' = 'pdf',
+): string[] {
   return [
     'compile',
     '--root',
@@ -41,7 +46,8 @@ export function typstArguments(entrypoint: string, output = '/output/document.pd
     '--jobs',
     '1',
     '--format',
-    'pdf',
+    format,
+    ...(format === 'png' ? ['--pages', '1', '--ppi', '72'] : []),
     `./${entrypoint}`,
     output,
   ];

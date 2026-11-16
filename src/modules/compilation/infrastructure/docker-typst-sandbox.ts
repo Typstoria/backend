@@ -4,7 +4,7 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { startDockerWatchdog } from './docker-watchdog';
 import { AppConfigService } from '../../../config/app-config.service';
-import { MAX_PDF_BYTES } from '../domain/compilation';
+import { MAX_PDF_BYTES, MAX_PREVIEW_BYTES } from '../domain/compilation';
 import {
   SANDBOX_POLICY,
   typstArguments,
@@ -47,6 +47,8 @@ export class DockerTypstSandbox implements TypstSandbox {
   }
 
   async execute(workspace: SandboxWorkspace, signal?: AbortSignal): Promise<SandboxExecution> {
+    const format = workspace.format ?? 'pdf';
+    const outputLimit = format === 'png' ? MAX_PREVIEW_BYTES : MAX_PDF_BYTES;
     const name = `typstoria-compile-${randomUUID()}`;
     const deadline = new AbortController();
     const combined = signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal;
@@ -75,7 +77,7 @@ export class DockerTypstSandbox implements TypstSandbox {
         '--cpus=1',
         '--pids-limit=32',
         '--ulimit',
-        `fsize=${MAX_PDF_BYTES}:${MAX_PDF_BYTES}`,
+        `fsize=${outputLimit}:${outputLimit}`,
         '--ulimit',
         'core=0:0',
         '--ulimit',
@@ -101,7 +103,7 @@ export class DockerTypstSandbox implements TypstSandbox {
         'KILL',
         '30',
         '/bin/typst',
-        ...typstArguments(workspace.entrypoint, '-'),
+        ...typstArguments(workspace.entrypoint, '-', format),
       ]);
       if (combined.aborted) return { ...empty, timedOut: true };
       if (created.code !== 0) return { ...empty, stderr: created.stderr };
@@ -111,12 +113,7 @@ export class DockerTypstSandbox implements TypstSandbox {
         30_000,
         this.environment(),
       );
-      const result = await this.command(
-        ['start', '--attach', name],
-        30_000,
-        combined,
-        MAX_PDF_BYTES,
-      );
+      const result = await this.command(['start', '--attach', name], 30_000, combined, outputLimit);
       if (combined.aborted || result.timedOut) return { ...result, timedOut: true };
       if (result.outputLimit) return result;
       const inspected = await this.command(['inspect', '--format', '{{.State.OOMKilled}}', name]);
@@ -124,8 +121,8 @@ export class DockerTypstSandbox implements TypstSandbox {
       if (inspected.stdout.toString('utf8').trim() === 'true')
         return { ...result, resourceLimit: true };
       if (result.code !== 0) return result;
-      // Typst writes PDF to a bounded pipe. The container has no writable host mounts.
-      await writeFile(join(workspace.output, 'document.pdf'), result.stdout, {
+      // Typst writes the artifact to a bounded pipe. The container has no writable host mounts.
+      await writeFile(join(workspace.output, `document.${format}`), result.stdout, {
         flag: 'wx',
         mode: 0o600,
       });

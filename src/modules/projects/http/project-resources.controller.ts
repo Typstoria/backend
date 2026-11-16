@@ -43,7 +43,7 @@ import {
 import { ProjectUploadsService } from '../application/project-uploads.service';
 import { ProjectsService } from '../application/projects.service';
 import { ProjectUploadDto } from './project-uploads.dto';
-import { FileRevisionQueryDto } from './projects.dto';
+import { FileRevisionQueryDto, ProjectPreviewQueryDto } from './projects.dto';
 
 @ApiTags('Project resources')
 @ApiBearerAuth('bearer')
@@ -61,6 +61,19 @@ export class ProjectResourcesController {
     private readonly uploads: ProjectUploadsService,
     private readonly projects: ProjectsService,
   ) {}
+
+  /** First page of the latest successful accepted document, outside the project tree. */
+  @Get('preview')
+  @ApiProduces('image/png')
+  @ApiOkResponse({ schema: { type: 'string', format: 'binary' } })
+  async preview(
+    @IdParam('projectId') projectId: number,
+    @Query() query: ProjectPreviewQueryDto,
+    @Req() request: AuthRequest,
+  ): Promise<StreamableFile> {
+    const bytes = await this.projects.preview(request.actor!, projectId, query.version);
+    return new StreamableFile(bytes, { type: 'image/png', length: bytes.length });
+  }
 
   /** Stage one resource for 24 hours without changing the current document revision. */
   @Post('uploads')

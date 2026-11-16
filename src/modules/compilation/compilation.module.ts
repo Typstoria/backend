@@ -1,3 +1,4 @@
+import { PreviewProcessor } from './application/preview-processor.service';
 import { Module } from '@nestjs/common';
 import { FilesModule } from '../files/files.module';
 import { ProjectsModule } from '../projects/projects.module';
@@ -12,6 +13,7 @@ import { SandboxTypstRunner } from './infrastructure/sandbox-typst-runner';
   providers: [
     CompilationsService,
     CompileProcessor,
+    PreviewProcessor,
     { provide: TypstRunner, useClass: SandboxTypstRunner },
   ],
   controllers: [CompilationsController],

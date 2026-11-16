@@ -69,3 +69,13 @@ TEST_TYPST_DOCKER_IMAGE=ghcr.io/typst/typst:0.14.2@sha256:b756590c0713ca5707654f
 ```
 
 `test:compiler:docker` запускає compiler tests з реальним Docker sandbox. Integration слід запускати з `DATABASE_URL` окремої тестової БД: перевірки черг обробляють доступні pending jobs, тому робоча БД з користувацькими даними для них непридатна. Integration перевіряє PostgreSQL polling, claim/retry/fencing, ownership, logout/delete та artifact storage. Опційна команда з `TEST_TYPST_DOCKER_IMAGE` додатково проходить API → DB worker → справжній Docker sandbox. Для компіляції потрібен робочий Docker daemon і завантажений pinned image.
+
+## Обкладинки проєктів
+
+Після успішної компіляції прийнятої ревізії той самий compile worker обробляє окрему durable чергу `compile_jobs.preview_*`. Обкладинка — PNG першої сторінки, експортований із того самого immutable snapshot через Typst (`--format png --pages 1 --ppi 72`) у чинному Docker/Linux sandbox. Окремого PDF renderer чи host-конвертера немає. Ліміти: 2 MiB, до 4096 px на сторону та 8 млн пікселів; sandbox зберігає чинні CPU/memory/time/network limits. Компіляції пропозицій обкладинок не створюють.
+
+Успішний PDF публікується до початку цієї стадії. Помилка PNG не змінює PDF status; є три спроби з durable lease/fencing та recovery. PDF і PNG поділяють ліміт двох одночасних задач глобально й однієї на власника. Перезапускати слід API та compile worker після міграції `AddProjectPreviews`; її backfill ставить у чергу лише найновішу успішну прийняту компіляцію кожного активного проєкту.
+
+`ProjectDto.preview` містить `{revisionId, version}` або `null`. Версія — SHA-256 зображення. `GET /api/projects/:projectId/preview?version=…` повертає приватний `image/png` з `no-store`; потрібні власність, grant проєкту та `documents:read` для MCP. Інша версія або відсутня обкладинка дають 404. Storage key/Blob ID назовні не передаються. Файл не входить до snapshot, дерева, revision history чи compiler input; publication не змінює дату редагування проєкту.
+
+Вказівник обкладинки оновлюється атомарно за порядком revision ID, потім compile job ID. Пізня стара робота не замінює новішу. Нове редагування, невдала компіляція й семиденний expiry PDF залишають останню успішну обкладинку. Вона доступна до заміни або видалення проєкту незалежно від PDF TTL. Soft delete одразу блокує читання й publication. Фізичний GC непотрібних blobs лишається спільним обмеженням поточного сховища; ця зміна не додає видалення immutable об’єктів, які можуть мати інші посилання.
