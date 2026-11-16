@@ -33,7 +33,7 @@ import type { AuthRequest } from '../../identity/http/auth-request';
 import { VerifiedRequired } from '../../identity/http/auth-policy';
 import { NoStoreInterceptor } from '../../identity/http/no-store.interceptor';
 import { CompilationsService } from '../application/compilations.service';
-import { CompilationDto, CreateCompilationDto } from './compilation.dto';
+import { CompilationDto, CreateCompilationDto, WorkspaceCompilationDto } from './compilation.dto';
 
 @ApiTags('Compilations')
 @ApiBearerAuth('bearer')
@@ -67,6 +67,28 @@ export class CompilationsController {
     @Req() request: AuthRequest & ContextRequest,
   ): Promise<CompilationDto> {
     return this.compilations.create(request.actor!, projectId, input, request.requestId!);
+  }
+
+  /** Most recent unexpired PDF of an accepted document, never a proposal preview. */
+  @Get('latest-pdf')
+  @ApiOkResponse({ type: WorkspaceCompilationDto })
+  latestPdf(
+    @IdParam('projectId') projectId: number,
+    @Req() request: AuthRequest,
+  ): Promise<WorkspaceCompilationDto> {
+    return this.compilations.latestPdf(request.actor!, projectId);
+  }
+
+  /** Open the last PDF, reuse current work, or queue the current saved revision. */
+  @Post('ensure')
+  @HttpCode(200)
+  @ApiOkResponse({ type: WorkspaceCompilationDto })
+  @ApiTooManyRequestsResponse({ type: ErrorResponseDto })
+  ensure(
+    @IdParam('projectId') projectId: number,
+    @Req() request: AuthRequest & ContextRequest,
+  ): Promise<WorkspaceCompilationDto> {
+    return this.compilations.ensure(request.actor!, projectId, request.requestId!);
   }
 
   /** Read status, diagnostics and whether this revision is still current. */

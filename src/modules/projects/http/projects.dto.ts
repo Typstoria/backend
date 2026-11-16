@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Length, Matches, Max, Min } from 'class-validator';
+import { IsInt, IsOptional, IsString, Length, Matches, Max, MaxLength, Min } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { parseEntityId } from '../../../common/ids/numeric-id';
 import { entityIdSchema as entityId } from '../../../common/http/entity-id-schema';
@@ -37,6 +37,14 @@ export class ListProjectsQueryDto {
   @Min(1)
   @Max(100)
   limit: number = 20;
+
+  /** Optional case-insensitive title substring; surrounding whitespace is ignored. */
+  @ApiProperty({ type: String, maxLength: 200, required: false })
+  @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  search?: string;
 }
 
 export class FileRevisionQueryDto {

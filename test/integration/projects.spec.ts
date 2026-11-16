@@ -416,6 +416,66 @@ describe('project lifecycle with PostgreSQL and private local storage', () => {
     expect(others.body.items.map((item: { id: number }) => item.id)).toEqual([foreign]);
   });
 
+  it('searches literal case-insensitive title substrings across filtered cursor pages', async () => {
+    const alpha = (await create(randomUUID(), token, 'Find Alpha')).body.projectId as number;
+    await create(randomUUID(), token, 'Noise between results').expect(201);
+    const beta = (await create(randomUUID(), token, 'fInD Beta')).body.projectId as number;
+    const gamma = (await create(randomUUID(), token, 'Find Gamma')).body.projectId as number;
+    const foreign = (await create(randomUUID(), otherToken, 'Find Foreign')).body
+      .projectId as number;
+    const deleted = (await create(randomUUID(), token, 'Find Deleted')).body.projectId as number;
+    await remove(deleted).expect(204);
+
+    const first = await client()
+      .get('/api/projects')
+      .query({ limit: 2, search: '  fInD  ' })
+      .auth(token, { type: 'bearer' })
+      .expect(200);
+    expect(first.body.items.map((item: { id: number }) => item.id)).toEqual([gamma, beta]);
+    expect(first.body.nextCursor).toBe(beta);
+    const second = await client()
+      .get('/api/projects')
+      .query({ limit: 2, cursor: first.body.nextCursor, search: 'Find' })
+      .auth(token, { type: 'bearer' })
+      .expect(200);
+    expect(second.body.items.map((item: { id: number }) => item.id)).toEqual([alpha]);
+    expect(second.body.nextCursor).toBeNull();
+    expect(
+      [...first.body.items, ...second.body.items].map((item: { id: number }) => item.id),
+    ).not.toContain(foreign);
+
+    for (const title of [
+      'Literal 100% complete',
+      'Literal 100x complete',
+      'Literal under_score',
+      'Literal underXscore',
+      'Literal back\\slash',
+      'Literal backslash',
+    ])
+      await create(randomUUID(), token, title).expect(201);
+    const literalCases = [
+      ['100%', 'Literal 100% complete'],
+      ['under_score', 'Literal under_score'],
+      ['back\\slash', 'Literal back\\slash'],
+    ] as const;
+    for (const [search, expectedTitle] of literalCases) {
+      const result = await client()
+        .get('/api/projects')
+        .query({ search })
+        .auth(token, { type: 'bearer' })
+        .expect(200);
+      expect(result.body.items.map((item: { title: string }) => item.title)).toEqual([
+        expectedTitle,
+      ]);
+    }
+    await client()
+      .get('/api/projects')
+      .query({ search: '   ' })
+      .auth(token, { type: 'bearer' })
+      .expect(200)
+      .then((result) => expect(result.body.items.length).toBeGreaterThan(3));
+  });
+
   it('renames metadata without creating a document revision', async () => {
     const key = randomUUID();
     const created = (await create(key).expect(201)).body as ProjectCreatedDto;
@@ -536,6 +596,8 @@ describe('project lifecycle with PostgreSQL and private local storage', () => {
       { cursor: '1e2' },
       { limit: [1, 2] },
       { cursor: [1, 2] },
+      { search: ['two', 'values'] },
+      { search: 'x'.repeat(201) },
       { ownerId: other.id },
     ])
       await client().get('/api/projects').query(query).auth(token, { type: 'bearer' }).expect(400);

@@ -1,6 +1,6 @@
 import { requireScope } from '../../../common/actor/access-policy';
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager, In } from 'typeorm';
 import type { UserActor } from '../../../common/actor/actor';
 import { lockCompileAdmission, queueCompilation } from '../infrastructure/queue-compilation';
 import { BlobStorage } from '../../files/infrastructure/blob-storage';
@@ -8,7 +8,11 @@ import { Blob } from '../../files/infrastructure/persistence/entities/blob.entit
 import { ProjectsService } from '../../projects/application/projects.service';
 import { ProjectRevision } from '../../revisions/infrastructure/persistence/entities/project-revision.entity';
 import { ProjectSnapshot } from '../../revisions/infrastructure/persistence/entities/project-snapshot.entity';
-import { CompilationDto, CreateCompilationDto } from '../http/compilation.dto';
+import {
+  CompilationDto,
+  CreateCompilationDto,
+  WorkspaceCompilationDto,
+} from '../http/compilation.dto';
 import { CompileJob } from '../infrastructure/persistence/entities/compile-job.entity';
 
 @Injectable()
@@ -48,6 +52,100 @@ export class CompilationsService {
       );
       return this.dto(job, project.currentRevisionId);
     });
+  }
+
+  /** Read-only lookup: an unavailable server must never be mistaken for no PDF. */
+  async latestPdf(actor: UserActor, projectId: number): Promise<WorkspaceCompilationDto> {
+    requireScope(actor, 'compile:read', 'documents:read');
+    const project = await this.projects.ownedProject(this.database.manager, actor, projectId);
+    const job = await this.latestPdfJob(this.database.manager, actor.userId, projectId);
+    if (!job) return { job: null, revisionNumber: null };
+    const result = await this.workspaceDto(this.database.manager, job, project.currentRevisionId);
+    // Expiry can pass while reading revision metadata; do not advertise an
+    // already-unavailable artifact as a successful latest lookup.
+    return result.job?.artifactAvailable ? result : { job: null, revisionNumber: null };
+  }
+
+  /** Recheck under the same admission/project locks as manual compilation.
+   * Concurrent openings and a lost response can reuse a pending or completed result.
+   */
+  async ensure(
+    actor: UserActor,
+    projectId: number,
+    requestId: string,
+  ): Promise<WorkspaceCompilationDto> {
+    requireScope(actor, 'compile:read', 'compile:run', 'documents:read');
+    await this.projects.ownedProject(this.database.manager, actor, projectId);
+    return this.database.transaction(async (manager) => {
+      await lockCompileAdmission(manager);
+      // Publication also locks the project: no successful result can appear in the
+      // gap between checking the latest PDF and checking queued/running work.
+      const project = await this.projects.ownedProject(manager, actor, projectId, true);
+      let job = await this.latestPdfJob(manager, actor.userId, projectId);
+      job ??= await manager.findOne(CompileJob, {
+        where: {
+          projectId,
+          ownerId: actor.userId,
+          revisionId: project.currentRevisionId,
+          status: In(['queued', 'running']),
+        },
+        order: { id: 'DESC' },
+      });
+      if (!job) {
+        const revision = await manager.findOneByOrFail(ProjectRevision, {
+          id: project.currentRevisionId,
+          projectId,
+        });
+        const snapshot = await manager.findOneByOrFail(ProjectSnapshot, {
+          id: revision.snapshotId,
+          projectId,
+        });
+        job = await queueCompilation(
+          manager,
+          actor,
+          snapshot,
+          { revisionId: revision.id },
+          requestId,
+        );
+      }
+      return this.workspaceDto(manager, job, project.currentRevisionId);
+    });
+  }
+
+  private latestPdfJob(
+    manager: EntityManager,
+    ownerId: number,
+    projectId: number,
+  ): Promise<CompileJob | null> {
+    return manager
+      .getRepository(CompileJob)
+      .createQueryBuilder('job')
+      .innerJoin(
+        ProjectRevision,
+        'revision',
+        'revision.id = job.revisionId AND revision.projectId = job.projectId',
+      )
+      .where('job.ownerId = :ownerId AND job.projectId = :projectId', { ownerId, projectId })
+      .andWhere('job.proposalId IS NULL AND job.revisionId IS NOT NULL')
+      .andWhere('job.status = :status', { status: 'succeeded' })
+      .andWhere('job.artifactBlobId IS NOT NULL AND job.artifactExpiresAt > :now', {
+        now: new Date(),
+      })
+      .orderBy('revision.number', 'DESC')
+      .addOrderBy('job.id', 'DESC')
+      .getOne();
+  }
+
+  private async workspaceDto(
+    manager: EntityManager,
+    job: CompileJob,
+    headId: number,
+  ): Promise<WorkspaceCompilationDto> {
+    const revision = await manager.findOneByOrFail(ProjectRevision, {
+      id: job.revisionId!,
+      projectId: job.projectId,
+    });
+    return { job: this.dto(job, headId), revisionNumber: revision.number };
   }
 
   async get(actor: UserActor, projectId: number, id: number): Promise<CompilationDto> {

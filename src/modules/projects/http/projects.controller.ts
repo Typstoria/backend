@@ -132,7 +132,7 @@ export class ProjectsController {
   /** List active projects owned by the current user, newest IDs first. */
   @Get()
   list(@Query() query: ListProjectsQueryDto, @Req() request: AuthRequest): Promise<ProjectListDto> {
-    return this.projects.list(request.actor!, query.limit, query.cursor);
+    return this.projects.list(request.actor!, query.limit, query.cursor, query.search);
   }
 
   /** Rename an owned project. The last completed rename wins. */

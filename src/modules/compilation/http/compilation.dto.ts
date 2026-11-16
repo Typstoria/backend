@@ -47,3 +47,11 @@ export class CompilationDto {
   @ApiProperty({ format: 'date-time', nullable: true, type: String }) startedAt!: string | null;
   @ApiProperty({ format: 'date-time', nullable: true, type: String }) finishedAt!: string | null;
 }
+
+export class WorkspaceCompilationDto {
+  @ApiProperty({ type: CompilationDto, nullable: true })
+  job!: CompilationDto | null;
+
+  @ApiProperty({ type: 'integer', minimum: 1, nullable: true })
+  revisionNumber!: number | null;
+}

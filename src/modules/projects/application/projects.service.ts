@@ -6,7 +6,7 @@ import {
 } from '../../../common/actor/access-policy';
 import { GitRevisionMapping } from '../../history/infrastructure/persistence/entities/git-revision-mapping.entity';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { DataSource, EntityManager, In, IsNull, LessThan } from 'typeorm';
+import { DataSource, EntityManager, IsNull } from 'typeorm';
 import type { UserActor } from '../../../common/actor/actor';
 import { BlobStorage } from '../../files/infrastructure/blob-storage';
 import { Blob } from '../../files/infrastructure/persistence/entities/blob.entity';
@@ -197,22 +197,35 @@ export class ProjectsService {
     return this.projectDto(await this.ownedProject(this.database.manager, actor, projectId));
   }
 
-  async list(actor: UserActor, limit: number, cursor?: number): Promise<ProjectListDto> {
+  async list(
+    actor: UserActor,
+    limit: number,
+    cursor?: number,
+    search?: string,
+  ): Promise<ProjectListDto> {
     requireScope(actor, 'projects:read');
-    const ids =
-      actor.channel === 'mcp'
-        ? (actor.projectIds ?? []).filter((id) => cursor === undefined || id < cursor)
-        : undefined;
-    if (ids?.length === 0) return { items: [], nextCursor: null };
-    const projects = await this.database.manager.find(Project, {
-      where: {
-        ownerId: actor.userId,
-        deletedAt: IsNull(),
-        ...(ids ? { id: In(ids) } : cursor === undefined ? {} : { id: LessThan(cursor) }),
-      },
-      order: { id: 'DESC' },
-      take: limit + 1,
-    });
+    const query = this.database.manager
+      .getRepository(Project)
+      .createQueryBuilder('project')
+      .where('project.ownerId = :ownerId', { ownerId: actor.userId })
+      .andWhere('project.deletedAt IS NULL');
+    if (cursor !== undefined) query.andWhere('project.id < :cursor', { cursor });
+    if (actor.channel === 'mcp') {
+      const ids = actor.projectIds ?? [];
+      if (ids.length === 0) return { items: [], nextCursor: null };
+      query.andWhere('project.id IN (:...projectIds)', { projectIds: ids });
+    }
+    const normalizedSearch = search?.trim();
+    if (normalizedSearch) {
+      const literal = normalizedSearch.replace(/[\\%_]/g, '\\$&');
+      query.andWhere("project.title ILIKE :search ESCAPE E'\\\\'", {
+        search: `%${literal}%`,
+      });
+    }
+    const projects = await query
+      .orderBy('project.id', 'DESC')
+      .take(limit + 1)
+      .getMany();
     const items = projects.slice(0, limit).map((project) => this.projectDto(project));
     return { items, nextCursor: projects.length > limit ? items.at(-1)!.id : null };
   }
