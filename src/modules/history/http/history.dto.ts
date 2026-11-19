@@ -79,12 +79,18 @@ export class EntrypointDiffDto {
   @ApiProperty(entityIdSchema) afterFileId!: number;
 }
 
+export class DirectoryDiffDto {
+  added!: string[];
+  deleted!: string[];
+}
+
 export class RevisionDiffDto {
   @ApiProperty(entityIdSchema) fromRevisionId!: number;
   @ApiProperty(entityIdSchema) toRevisionId!: number;
   @ApiProperty({ enum: ['pending', 'ready', 'failed'] }) fromHistorySyncStatus!: HistorySyncStatus;
   @ApiProperty({ enum: ['pending', 'ready', 'failed'] }) toHistorySyncStatus!: HistorySyncStatus;
   files!: FileDiffDto[];
+  directories!: DirectoryDiffDto;
   context!: ContextDiffDto;
   entrypoint!: EntrypointDiffDto;
 }

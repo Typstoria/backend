@@ -283,6 +283,7 @@ export class ProposalsService {
       candidateManifestHash: snapshot.manifestHash,
       mainFileId: snapshot.mainFileId,
       contextText: snapshot.contextText,
+      directories: [...snapshot.directories].sort(),
       tree: files.map(this.fileMetadata),
     };
   }
@@ -624,6 +625,7 @@ export class ProposalsService {
       {
         mainFileId: base.mainFileId,
         contextText: base.contextText,
+        directories: base.directories,
         files: await readSnapshotFiles(this.database.manager, projectId, base.id, actor.userId),
       },
       input.operations,

@@ -190,6 +190,7 @@ export class GitHistoryWriter {
       revision,
       mainFileId: snapshot.mainFileId,
       contextText: snapshot.contextText,
+      directories: snapshot.directories,
       manifestHash: snapshot.manifestHash,
       files: source,
       parentSha,

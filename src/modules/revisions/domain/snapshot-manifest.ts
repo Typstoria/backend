@@ -14,6 +14,7 @@ export function serializeSnapshotManifest(input: {
   mainFileId: number;
   contextText: string;
   files: readonly ManifestFile[];
+  directories?: readonly string[];
 }): string {
   const files = [...input.files]
     .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
@@ -26,11 +27,12 @@ export function serializeSnapshotManifest(input: {
       mediaType: file.mediaType,
     }));
   const manifest = {
-    version: 1,
+    version: input.directories?.length ? 2 : 1,
     mainFileId: input.mainFileId,
     contextText: input.contextText,
     files,
     materials: [],
+    ...(input.directories?.length ? { directories: [...input.directories].sort() } : {}),
   };
   return JSON.stringify(manifest);
 }

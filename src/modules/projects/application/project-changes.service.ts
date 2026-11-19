@@ -70,7 +70,12 @@ export class ProjectChangesService {
       uploadIds,
     );
     const draft = applyTextChanges(
-      { mainFileId: base.mainFileId, contextText: base.contextText, files },
+      {
+        mainFileId: base.mainFileId,
+        contextText: base.contextText,
+        directories: base.directories,
+        files,
+      },
       input.operations,
       resources,
     );

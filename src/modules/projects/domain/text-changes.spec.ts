@@ -144,3 +144,75 @@ it('hashes payloads independently of JSON object property order, retaining opera
     mutationPayloadHash({ operations: [...operations].reverse() }),
   );
 });
+
+it('persists sorted normalized explicit directories while leaving the base immutable', () => {
+  const original = base();
+  original.directories = ['kept'];
+  const draft = applyTextChanges(original, [
+    { type: 'createDirectory', path: 'z/empty' },
+    { type: 'createDirectory', path: 'cafe\u0301' },
+    { type: 'createDirectory', path: 'café' },
+  ]);
+  expect(draft.directories).toEqual(['café', 'kept', 'z/empty']);
+  expect(original.directories).toEqual(['kept']);
+});
+
+it('moves explicit and implicit directory subtrees atomically preserving file identities', () => {
+  const original = base();
+  original.files[0]!.path = 'src/nested/main.typ';
+  original.directories = ['src/empty', 'src/nested/empty', 'unrelated'];
+  const draft = applyTextChanges(original, [
+    { type: 'renameDirectory', path: 'src', newPath: 'lib/code' },
+  ]);
+  expect(draft.files[0]).toMatchObject({ fileId: 1, path: 'lib/code/nested/main.typ' });
+  expect(draft.mainFileId).toBe(1);
+  expect(draft.directories).toEqual(['lib/code/empty', 'lib/code/nested/empty', 'unrelated']);
+  expect(original.files[0]!.path).toBe('src/nested/main.typ');
+});
+
+it('rejects directory/file collisions, descendant moves, missing sources and expanded path overflow', () => {
+  const original = base();
+  original.directories = ['empty', 'target/child'];
+  for (const operation of [
+    { type: 'createDirectory', path: 'main.typ' },
+    { type: 'createDirectory', path: 'main.typ/child' },
+    { type: 'createFile', path: 'empty', content: '' },
+    { type: 'createFile', path: 'target', content: '' },
+    { type: 'renameDirectory', path: 'empty', newPath: 'empty/child' },
+    { type: 'renameDirectory', path: 'empty', newPath: 'target' },
+    { type: 'renameDirectory', path: 'empty', newPath: 'main.typ' },
+    { type: 'deleteDirectory', path: 'missing' },
+  ] satisfies TextChange[])
+    expect(() => applyTextChanges(original, [operation])).toThrow();
+  original.files[0]!.path = 'src/' + 'x'.repeat(250) + '.typ';
+  const longDestination = Array.from({ length: 4 }, () => 'y'.repeat(250)).join('/');
+  expect(() =>
+    applyTextChanges(original, [
+      { type: 'renameDirectory', path: 'src', newPath: longDestination },
+    ]),
+  ).toThrow('relative POSIX');
+});
+
+it('deletes directory subtrees and requires a final replacement entrypoint', () => {
+  const original = base();
+  original.files[0]!.path = 'src/main.typ';
+  original.directories = ['src', 'src/empty', 'kept'];
+  expect(() => applyTextChanges(original, [{ type: 'deleteDirectory', path: 'src' }])).toThrow(
+    'entrypoint',
+  );
+  const draft = applyTextChanges(original, [
+    { type: 'deleteDirectory', path: 'src' },
+    { type: 'createFile', path: 'new.typ', content: '' },
+    { type: 'setEntrypoint', path: 'new.typ' },
+  ]);
+  expect(draft.directories).toEqual(['kept']);
+  expect(draft.files.map((file) => file.path)).toEqual(['new.typ']);
+});
+
+it('bounds the number of explicit directories', () => {
+  const original = base();
+  original.directories = Array.from({ length: 500 }, (_, index) => `dir-${index}`);
+  expect(() => applyTextChanges(original, [{ type: 'createDirectory', path: 'extra' }])).toThrow(
+    '500 explicit directories',
+  );
+});

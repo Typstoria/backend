@@ -60,6 +60,7 @@ export async function writeSnapshot(
       projectId,
       mainFileId: draft.mainFileId,
       contextText: draft.contextText,
+      directories: draft.directories ?? [],
       manifestHash: snapshotManifestHash(draft),
     }),
   );

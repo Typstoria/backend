@@ -94,6 +94,40 @@ describe('atomic text changes with PostgreSQL and private storage', () => {
     }
   });
 
+  it('versions empty directories, replays idempotently, and moves/deletes subtrees preserving file IDs', async () => {
+    expect((await state().expect(200)).body.directories).toEqual([]);
+    const key = randomUUID();
+    const operations = [
+      { type: 'createDirectory', path: 'src/empty' },
+      { type: 'renameFile', fileId: project.mainFileId, path: 'src/main.typ' },
+    ];
+    const created = await save(operations, project.revisionId, key).expect(201);
+    expect(created.body.revisionNumber).toBe(2);
+    expect((await save(operations, project.revisionId, key).expect(201)).body).toEqual(
+      created.body,
+    );
+    expect((await state(project.revisionId).expect(200)).body.directories).toEqual([]);
+    expect((await state().expect(200)).body.directories).toEqual(['src/empty']);
+    const moved = await save(
+      [{ type: 'renameDirectory', path: 'src', newPath: 'lib' }],
+      created.body.revisionId,
+    ).expect(201);
+    const afterMove = await state().expect(200);
+    expect(afterMove.body.directories).toEqual(['lib/empty']);
+    expect(afterMove.body.tree).toEqual([
+      expect.objectContaining({ fileId: project.mainFileId, path: 'lib/main.typ' }),
+    ]);
+    await save([{ type: 'deleteDirectory', path: 'lib' }], moved.body.revisionId).expect(422);
+    const unchanged = await state().expect(200);
+    expect(unchanged.body.revision.id).toBe(moved.body.revisionId);
+    const removed = await save(
+      [{ type: 'deleteDirectory', path: 'lib/empty' }],
+      moved.body.revisionId,
+    ).expect(201);
+    expect(removed.body.revisionNumber).toBe(4);
+    expect((await state().expect(200)).body.directories).toEqual([]);
+  });
+
   it('saves multiple files/context as one revision, preserves history, and moves files without changing their IDs', async () => {
     const result = await save([
       { type: 'updateText', fileId: project.mainFileId, content: '#invalid(' },

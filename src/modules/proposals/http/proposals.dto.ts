@@ -98,6 +98,7 @@ export class ProposalCandidateDto extends PickType(ProjectChangesDto, ['operatio
   @ApiProperty(entityIdSchema) mainFileId!: number;
   contextText!: string;
   tree!: ProjectFileDto[];
+  directories!: string[];
 }
 
 export class ProposalTextFileDto extends ProjectFileDto {
@@ -107,6 +108,7 @@ export class ProposalTextFileDto extends ProjectFileDto {
 
 export class ProposalDiffDto extends PickType(RevisionDiffDto, [
   'files',
+  'directories',
   'context',
   'entrypoint',
 ] as const) {

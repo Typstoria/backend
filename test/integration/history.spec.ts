@@ -169,6 +169,34 @@ describe('Git projection, revision history, diff and restore', () => {
     if (root) await rm(root, { recursive: true, force: true });
   });
 
+  it('projects folder-only revisions into Git metadata, diffs and restores without placeholder files', async () => {
+    const added = await save([{ type: 'createDirectory', path: 'empty/nested' }]).expect(201);
+    await writer.process(project.projectId);
+    const first = await detail(project.revisionId).expect(200);
+    const second = await detail(added.body.revisionId).expect(200);
+    expect(first.body.historySyncStatus).toBe('ready');
+    expect(second.body.historySyncStatus).toBe('ready');
+    expect(second.body.commitSha).not.toBe(first.body.commitSha);
+    expect(command(['ls-tree', '-r', '--name-only', second.body.commitSha]).split('\n')).toEqual([
+      '.typstoria/manifest.json',
+      'main.typ',
+    ]);
+    expect(
+      JSON.parse(command(['show', `${second.body.commitSha}:.typstoria/manifest.json`])),
+    ).toMatchObject({ version: 2, directories: ['empty/nested'] });
+    const changes = await diff(added.body.revisionId, project.revisionId).expect(200);
+    expect(changes.body.files).toEqual([]);
+    expect(changes.body.directories).toEqual({ added: ['empty/nested'], deleted: [] });
+    const restored = await restore(project.revisionId, added.body.revisionId).expect(201);
+    expect((await state().expect(200)).body.directories).toEqual([]);
+    await restore(added.body.revisionId, restored.body.revisionId).expect(201);
+    expect((await state().expect(200)).body.directories).toEqual(['empty/nested']);
+    await writer.rebuild(project.projectId);
+    expect((await detail(added.body.revisionId).expect(200)).body.commitSha).toBe(
+      second.body.commitSha,
+    );
+  });
+
   it('lists revisions with stable pagination and returns Git status without depending on Git', async () => {
     const v2 = (
       await save([{ type: 'updateText', fileId: project.mainFileId, content: 'Version 2' }]).expect(

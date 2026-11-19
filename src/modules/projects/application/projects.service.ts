@@ -315,6 +315,7 @@ export class ProjectsService {
       mainFileId: snapshot.mainFileId,
       contextText: hasScope(actor, 'context:read') ? snapshot.contextText : '',
       tree: hasScope(actor, 'documents:read') ? tree : [],
+      directories: hasScope(actor, 'documents:read') ? [...snapshot.directories].sort() : [],
     };
   }
 

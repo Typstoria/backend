@@ -161,6 +161,7 @@ export class ProjectStateDto {
 
   contextText!: string;
   tree!: ProjectFileDto[];
+  directories!: string[];
 }
 
 export class ProjectTextFileDto extends ProjectFileDto {

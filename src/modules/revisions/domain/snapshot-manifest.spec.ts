@@ -1,4 +1,4 @@
-import { snapshotManifestHash } from './snapshot-manifest';
+import { serializeSnapshotManifest, snapshotManifestHash } from './snapshot-manifest';
 
 it('hashes the complete snapshot canonically regardless of file and property order', () => {
   const main = {
@@ -37,4 +37,21 @@ it('hashes the complete snapshot canonically regardless of file and property ord
   expect(
     snapshotManifestHash({ ...input, files: [{ ...main, sha256: 'b'.repeat(64) }, chapter] }),
   ).not.toBe(hash);
+});
+
+it('preserves the exact legacy serialization and hashes absent or empty directories identically', () => {
+  const input = { mainFileId: 1, contextText: '', files: [] };
+  expect(serializeSnapshotManifest(input)).toBe(
+    '{"version":1,"mainFileId":1,"contextText":"","files":[],"materials":[]}',
+  );
+  expect(snapshotManifestHash({ ...input, directories: [] })).toBe(snapshotManifestHash(input));
+  expect(snapshotManifestHash({ ...input, directories: ['z', 'a'] })).toBe(
+    snapshotManifestHash({ ...input, directories: ['a', 'z'] }),
+  );
+  expect(snapshotManifestHash({ ...input, directories: ['empty'] })).not.toBe(
+    snapshotManifestHash(input),
+  );
+  expect(
+    JSON.parse(serializeSnapshotManifest({ ...input, directories: ['z', 'a'] })),
+  ).toMatchObject({ version: 2, directories: ['a', 'z'] });
 });

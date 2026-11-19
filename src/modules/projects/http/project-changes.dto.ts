@@ -23,6 +23,9 @@ import { entityIdSchema as entityId } from '../../../common/http/entity-id-schem
 
 export class ChangeOperationDto {
   @IsIn([
+    'createDirectory',
+    'renameDirectory',
+    'deleteDirectory',
     'createFile',
     'updateText',
     'renameFile',
@@ -33,6 +36,37 @@ export class ChangeOperationDto {
     'replaceFile',
   ])
   type!: string;
+}
+
+export class CreateDirectoryDto extends ChangeOperationDto {
+  @Equals('createDirectory')
+  type!: 'createDirectory';
+
+  @IsString()
+  @Length(1, 1024)
+  path!: string;
+}
+
+export class RenameDirectoryDto extends ChangeOperationDto {
+  @Equals('renameDirectory')
+  type!: 'renameDirectory';
+
+  @IsString()
+  @Length(1, 1024)
+  path!: string;
+
+  @IsString()
+  @Length(1, 1024)
+  newPath!: string;
+}
+
+export class DeleteDirectoryDto extends ChangeOperationDto {
+  @Equals('deleteDirectory')
+  type!: 'deleteDirectory';
+
+  @IsString()
+  @Length(1, 1024)
+  path!: string;
 }
 
 export class CreateTextFileDto extends ChangeOperationDto {
@@ -138,6 +172,9 @@ export class ReplaceFileDto extends ChangeOperationDto {
 }
 
 const changeOperationTypes = [
+  { name: 'createDirectory', value: CreateDirectoryDto },
+  { name: 'renameDirectory', value: RenameDirectoryDto },
+  { name: 'deleteDirectory', value: DeleteDirectoryDto },
   { name: 'attachFile', value: AttachFileDto },
   { name: 'replaceFile', value: ReplaceFileDto },
   { name: 'createFile', value: CreateTextFileDto },
@@ -149,6 +186,9 @@ const changeOperationTypes = [
 ];
 export const changeOperationModels = changeOperationTypes.map(({ value }) => value);
 export type TextChangeDto =
+  | CreateDirectoryDto
+  | RenameDirectoryDto
+  | DeleteDirectoryDto
   | AttachFileDto
   | ReplaceFileDto
   | CreateTextFileDto

@@ -20,6 +20,9 @@ export const changeBatch = {
   operations: z
     .array(
       z.discriminatedUnion('type', [
+        z.strictObject({ type: z.literal('createDirectory'), path }),
+        z.strictObject({ type: z.literal('renameDirectory'), path, newPath: path }),
+        z.strictObject({ type: z.literal('deleteDirectory'), path }),
         z.strictObject({ type: z.literal('createFile'), path, content }),
         z.strictObject({ type: z.literal('updateText'), fileId: id, content }),
         z.strictObject({ type: z.literal('renameFile'), fileId: id, path }),

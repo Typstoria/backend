@@ -154,6 +154,30 @@ describe('proposal review lifecycle', () => {
     if (root) await rm(root, { recursive: true, force: true });
   });
 
+  it('retains explicit directories through folder-only candidate review and later edits', async () => {
+    const proposal = await create([{ type: 'createDirectory', path: 'empty' }]);
+    const candidate = await client()
+      .get(`${path()}/proposals/${proposal.id}/candidate`)
+      .auth(token, { type: 'bearer' })
+      .expect(200);
+    expect(candidate.body.directories).toEqual(['empty']);
+    const validation = await validated(proposal);
+    expect(validation.status).toBe('not_required');
+    const accepted = await accept(proposal, validation).expect(201);
+    expect((await state().expect(200)).body.directories).toEqual(['empty']);
+    const next = await create(
+      [{ type: 'updateContext', content: 'new context' }],
+      accepted.body.revisionId,
+    );
+    const nextCandidate = await client()
+      .get(`${path()}/proposals/${next.id}/candidate`)
+      .auth(token, { type: 'bearer' })
+      .expect(200);
+    expect(nextCandidate.body.directories).toEqual(['empty']);
+    await accept(next, await validated(next)).expect(201);
+    expect((await state().expect(200)).body.directories).toEqual(['empty']);
+  });
+
   it('keeps candidate text and new files out of the accepted document until review', async () => {
     const proposal = await create([
       ...operations(),

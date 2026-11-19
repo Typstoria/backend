@@ -33,6 +33,9 @@ export class ProjectSnapshot {
   @Column({ name: 'context_text', type: 'text', default: '' })
   contextText!: string;
 
+  @Column({ type: 'text', array: true, default: [] })
+  directories!: string[];
+
   @Column({ name: 'manifest_hash', type: 'varchar', length: 64 })
   manifestHash!: string;
 

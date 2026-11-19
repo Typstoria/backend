@@ -13,6 +13,7 @@ export interface GitRevisionInput {
   revision: ProjectRevision;
   mainFileId: number;
   contextText: string;
+  directories?: string[];
   manifestHash: string;
   files: (DraftFile & { bytes: Buffer })[];
   parentSha: string | null;

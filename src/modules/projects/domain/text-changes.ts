@@ -5,9 +5,13 @@ import { resourceExtensionMatches } from '../../files/domain/resource-file';
 export const MAX_TEXT_BYTES = 1024 * 1024;
 export const MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024;
 export const MAX_SNAPSHOT_FILES = 500;
+export const MAX_SNAPSHOT_DIRECTORIES = 500;
 export const MAX_CHANGE_OPERATIONS = 200;
 
 export type TextChange =
+  | { type: 'createDirectory'; path: string }
+  | { type: 'renameDirectory'; path: string; newPath: string }
+  | { type: 'deleteDirectory'; path: string }
   | { type: 'createFile'; path: string; content: string }
   | { type: 'updateText'; fileId: number; content: string }
   | { type: 'renameFile'; fileId: number; path: string }
@@ -41,6 +45,7 @@ export interface TextSnapshot {
   mainFileId: number;
   contextText: string;
   files: DraftFile[];
+  directories?: string[];
 }
 
 function invalid(code: string, message: string): never {
@@ -97,6 +102,12 @@ export function applyTextChanges(
   uploads: ReadonlyMap<number, UploadedDraftResource> = new Map(),
 ): TextSnapshot {
   const files = new Map(base.files.map((file) => [file.fileId, { ...file }]));
+  const directories = new Set((base.directories ?? []).map(normalizedProjectPath));
+  const inside = (value: string, directory: string) =>
+    value === directory || value.startsWith(`${directory}/`);
+  const directoryExists = (path: string) =>
+    [...directories].some((value) => inside(value, path)) ||
+    [...files.values()].some((file) => file.path.startsWith(`${path}/`));
   let nextTemporaryId = -1;
   let entrypointPath: string | undefined;
   let contextText = base.contextText;
@@ -116,6 +127,35 @@ export function applyTextChanges(
   };
   for (const operation of operations) {
     switch (operation.type) {
+      case 'createDirectory':
+        directories.add(normalizedProjectPath(operation.path));
+        break;
+      case 'renameDirectory': {
+        const path = normalizedProjectPath(operation.path);
+        const newPath = normalizedProjectPath(operation.newPath);
+        if (!directoryExists(path))
+          invalid('DIRECTORY_NOT_IN_REVISION', 'The directory does not exist');
+        if (path === newPath) break;
+        if (inside(newPath, path))
+          invalid('INVALID_DIRECTORY_MOVE', 'A directory cannot be moved inside itself');
+        if (directoryExists(newPath) || [...files.values()].some((file) => file.path === newPath))
+          invalid('DIRECTORY_PATH_CONFLICT', 'The destination already exists');
+        const move = (value: string) => normalizedProjectPath(newPath + value.slice(path.length));
+        for (const file of files.values())
+          if (file.path.startsWith(`${path}/`)) file.path = move(file.path);
+        const moved = [...directories].map((value) => (inside(value, path) ? move(value) : value));
+        directories.clear();
+        for (const value of moved) directories.add(value);
+        break;
+      }
+      case 'deleteDirectory': {
+        const path = normalizedProjectPath(operation.path);
+        if (!directoryExists(path))
+          invalid('DIRECTORY_NOT_IN_REVISION', 'The directory does not exist');
+        for (const [id, file] of files) if (file.path.startsWith(`${path}/`)) files.delete(id);
+        for (const value of directories) if (inside(value, path)) directories.delete(value);
+        break;
+      }
       case 'createFile': {
         const file: DraftFile = {
           fileId: nextTemporaryId--,
@@ -184,7 +224,10 @@ export function applyTextChanges(
       invalid('DUPLICATE_FILE_PATH', 'The final tree contains duplicate file paths');
     paths.add(file.path);
   }
-  for (const path of paths) {
+  for (const path of directories)
+    if (paths.has(path))
+      invalid('FILE_DIRECTORY_CONFLICT', 'A file path cannot also be a directory');
+  for (const path of [...paths, ...directories]) {
     const segments = path.split('/');
     for (let index = 1; index < segments.length; index++)
       if (paths.has(segments.slice(0, index).join('/')))
@@ -201,6 +244,7 @@ export function applyTextChanges(
     );
   if (
     files.size > MAX_SNAPSHOT_FILES ||
+    directories.size > MAX_SNAPSHOT_DIRECTORIES ||
     [...files.values()].reduce(
       (sum, file) => sum + file.sizeBytes,
       Buffer.byteLength(contextText, 'utf8'),
@@ -208,7 +252,13 @@ export function applyTextChanges(
   )
     throw new PayloadTooLargeException({
       code: 'SNAPSHOT_TOO_LARGE',
-      message: 'A snapshot is limited to 500 files and 64 MiB including context',
+      message:
+        'A snapshot is limited to 500 files, 500 explicit directories and 64 MiB including context',
     });
-  return { mainFileId: mainFile.fileId, contextText, files: [...files.values()] };
+  return {
+    mainFileId: mainFile.fileId,
+    contextText,
+    files: [...files.values()],
+    directories: [...directories].sort(),
+  };
 }

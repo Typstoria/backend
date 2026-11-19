@@ -57,7 +57,7 @@ export class RevisionDiffService {
     projectId: number,
     fromSnapshotId: number,
     toSnapshotId: number,
-  ): Promise<Pick<RevisionDiffDto, 'files' | 'context' | 'entrypoint'>> {
+  ): Promise<Pick<RevisionDiffDto, 'files' | 'directories' | 'context' | 'entrypoint'>> {
     requireScope(actor, 'documents:read', 'context:read');
     await this.projects.ownedProject(this.database.manager, actor, projectId);
     const load = async (id: number) => {
@@ -194,6 +194,14 @@ export class RevisionDiffService {
     }
     return {
       files: changes.map((change) => change.result),
+      directories: {
+        added: after.snapshot.directories
+          .filter((path) => !before.snapshot.directories.includes(path))
+          .sort(),
+        deleted: before.snapshot.directories
+          .filter((path) => !after.snapshot.directories.includes(path))
+          .sort(),
+      },
       context,
       entrypoint: {
         changed: before.snapshot.mainFileId !== after.snapshot.mainFileId,
