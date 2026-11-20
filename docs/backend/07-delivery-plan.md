@@ -28,7 +28,7 @@ flowchart LR
 | P2 — домен                | Project, stable file IDs, blobs, accepted revisions, context text, entrypoint, atomic changes, pending mappings, ownership, concurrency/idempotency               | P1                 | Два конкурентні saves не втрачають текст; multi-file revision атомарна; між користувачами немає доступу |
 | P3 — compile/history      | PostgreSQL polling, CompileJob, runner, artifacts/diagnostics, fingerprints; bare Git repos, writer/maintenance, history/diff/restore                             | P2                 | Багатофайловий Typst→PDF; старий job не стає поточним; restart не губить jobs/Git mapping               |
 | P4 — review               | Proposals/candidates, validation, multi-file diff, accept/reject, stale/rebase, явне прийняття compile failure                                                    | P3                 | ШІ-правки не змінюють currentRevision до web acceptance; повтор accept дає ту саму ревізію              |
-| P5 — зовнішні клієнти     | MCP read/search/propose/compile/resources, PAT, OAuth provider adapter/discovery/PKCE/consent, scopes/project grants/revocation                                   | P4; spike уже у P0 | Повний сценарій у реальному MCP-клієнті; revoked credential не працює; MCP не приймає власну правку     |
+| P5 — зовнішні клієнти     | MCP read/search/propose/compile/resources, OAuth provider adapter/discovery/PKCE/consent, scopes/project grants/revocation                                        | P4; spike уже у P0 | Повний сценарій у реальному MCP-клієнті; revoked credential не працює; MCP не приймає власну правку     |
 | P6 — контекст/annotations | Material revisions, PDF/text/CSV/XLSX extraction, search chunks/provenance; annotation anchors/status/reanchor; MCP tools для них                                 | P2, P4, P5         | Заміна матеріалу версійна; матеріал не потрапляє у PDF автоматично; rename/restore не губить коментар   |
 | P7 — templates/transfer   | System fixtures, власні TemplateVersion, shares/revocation/copy; ZIP import/export і профілі manifest                                                             | P2, P3, P6         | Незалежна копія шаблону; чужий share не відкриває оригінал; ZIP round trip і негативні архіви           |
 | P8 — editor/backup        | Tinymist sessions/proxy, diagnostics/completion/format/definitions, outline, quick preview; GitHub App і односторонній backup                                     | P3, P5, P6         | Редакторні сценарії у фронтенді; snapshot backup перевірений; remote conflict не перезаписаний          |
@@ -42,7 +42,7 @@ P0 не є прототипом усієї системи: кожен spike пе
 
 Поточний прогрес P4: реалізовано [пропозиції та review](18-proposals.md): незмінні версії candidates, приватне читання/diff/download, validation через спільний compile worker, web-only accept/reject, exact version/hash/validation, idempotent acceptance, stale conflict та explicit rebase. Context-only/no-op не потребують компіляції; лише фактичний Typst error можна прийняти з явним acknowledgement. Інтеграція екрана review у frontend залишається окремою роботою.
 
-P5: реалізовано [PAT, OAuth та MCP](19-mcp-access.md). Наступний етап — P6, контекстні матеріали та анотації.
+P5: реалізовано [OAuth та MCP](19-mcp-access.md). Наступний етап — P6, контекстні матеріали та анотації.
 
 Наскрізний сценарій після P5: реєстрація → підтвердження email → порожній проєкт → редагування → PDF → підключення MCP → пропозиція ШІ → diff/помилки або PDF → прийняття/відхилення → нова Git-версія. Це перша цілісна демонстрація, але ще не завершення всього погодженого проєкту.
 
@@ -71,7 +71,7 @@ P5: реалізовано [PAT, OAuth та MCP](19-mcp-access.md). Наступ
 | T04       | Успішний multi-file compile, syntax error, timeout/OOM/output limit, missing package, Ukrainian fonts                          | F05, F08, N02, N04 |
 | T05       | Зміна тексту під час compile, завершення jobs у зворотному порядку, artifact expiry, unsaved draft                             | F05, N03           |
 | T06       | Proposal create/update/validate/accept/reject, stale base, changed candidate, repeated accept, compile-failure acknowledgement | F10, N01, N02      |
-| T07       | PAT/OAuth read-only scopes, project allowlist, revoked/expired token, неправильний audience/redirect/PKCE, refresh reuse       | F06, F07, F19, N04 |
+| T07       | OAuth read-only scopes, project allowlist, revoked/expired token, неправильний audience/redirect/PKCE, refresh reuse           | F06, F07, F19, N04 |
 | T08       | Реальний MCP read→proposal→compile→resource, client matrix, business errors vs protocol errors                                 | F06, F19           |
 | T09       | Git history/diff/restore, crash між Git ref і mapping, відсутній parent mapping, повтор writer                                 | F09, N05           |
 | T10       | Матеріали version/replace, PDF без text layer, XLSX без execution, extraction limits, context поза compile root                | F03, F13, N04      |

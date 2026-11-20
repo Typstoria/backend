@@ -9,7 +9,6 @@ import { toNodeHandler } from '@modelcontextprotocol/node';
 import type { Response } from 'express';
 import type { ContextRequest } from '../../common/http/request-context';
 import { AppConfigService } from '../../config/app-config.service';
-import { AccessService } from '../access/access.service';
 import { OAuthService } from '../access/oauth.service';
 import { Public } from '../identity/http/auth-policy';
 import { readBearerToken } from '../identity/http/auth-request';
@@ -21,7 +20,6 @@ import { McpToolsService } from './mcp-tools.service';
 export class McpController {
   constructor(
     private readonly config: AppConfigService,
-    private readonly access: AccessService,
     private readonly oauth: OAuthService,
     private readonly tools: McpToolsService,
     private readonly compilations: CompilationsService,
@@ -75,8 +73,9 @@ export class McpController {
 
   private async authenticate(req: ContextRequest, res: Response): Promise<UserActor | undefined> {
     const origin = this.config.mcpOrigin;
-    if (!origin) throw new ServiceUnavailableException('MCP public origin is not configured');
     res.setHeader('Cache-Control', 'no-store');
+    if (!origin || !this.oauth.resource)
+      throw new ServiceUnavailableException('MCP OAuth is not configured');
     const host = req.get('host')?.toLowerCase();
     const browserOrigin = req.get('origin');
     if (
@@ -89,11 +88,7 @@ export class McpController {
       return;
     }
     const token = readBearerToken(req);
-    const actor =
-      token &&
-      (token.startsWith('tp_pat_')
-        ? await this.access.resolvePat(token)
-        : await this.oauth.resolve(token));
+    const actor = token ? await this.oauth.resolve(token) : undefined;
     if (!actor) {
       const error = token ? 'error="invalid_token", ' : '';
       res.setHeader(

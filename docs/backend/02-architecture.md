@@ -52,7 +52,7 @@ PostgreSQL polling із claim/lease/fencing забезпечує recovery без
 | Модуль            | Відповідальність                                               |
 | ----------------- | -------------------------------------------------------------- |
 | IdentityModule    | Користувачі, паролі, email verification/reset, вебсесії        |
-| AccessModule      | PAT, OAuth grants, scopes, дозволені проєкти, відкликання      |
+| AccessModule      | OAuth grants, scopes, дозволені проєкти, відкликання           |
 | ProjectsModule    | Власність, метадані, entrypoint, життєвий цикл проєкту         |
 | FilesModule       | Шляхи, типи файлів, blobs, атомарні набори файлових змін       |
 | RevisionsModule   | Незмінні маніфести, optimistic concurrency, відновлення        |
@@ -122,7 +122,7 @@ docs/backend/
 
 ## 6. Що перевіряємо до детального коду
 
-- Сумісність обраної версії MCP SDK і реальних клієнтів: PAT, OAuth, tools, resource PDF, версія протоколу.
+- Сумісність обраної версії MCP SDK і реальних клієнтів: OAuth, tools, resource PDF, версія протоколу.
 - Інтеграцію OAuth provider з NestJS та спільною вебсесією.
 - Runner: ізоляція мережі/файлів, примусовий timeout, контроль пам'яті, українські шрифти та контрольовані пакети.
 - Tinymist: LSP поверх браузерного каналу, зіставлення позицій, кілька одночасних sessions, обчислювані заголовки.

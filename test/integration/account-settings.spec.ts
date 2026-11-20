@@ -118,12 +118,21 @@ describe('Account settings with real PostgreSQL (no real emails)', () => {
       .set('Idempotency-Key', randomUUID())
       .send({ title: 'MCP access before password change' })
       .expect(201);
-    const pat = await agent
-      .post('/api/access/tokens')
-      .send({ name: 'Test PAT', projectIds: [project.body.projectId], scopes: ['projects:read'] })
-      .expect(201);
     const access = app.get(AccessService);
-    await expect(access.resolvePat(pat.body.token)).resolves.toMatchObject({ userId: user.id });
+    const grantId = 'account-settings-' + randomUUID();
+    await access.createConnection(user, 'account-settings-test-client', grantId, {
+      name: 'Account settings test',
+      projectIds: [project.body.projectId],
+      scopes: ['projects:read'],
+    });
+    const resolveGrant = () =>
+      access.resolveOAuth(
+        grantId,
+        String(user.id),
+        'account-settings-test-client',
+        new Set(['projects:read']),
+      );
+    await expect(resolveGrant()).resolves.toMatchObject({ userId: user.id });
     const reset = createToken();
     await database.getRepository(IdentityChallenge).save({
       userId: user.id,
@@ -147,7 +156,7 @@ describe('Account settings with real PostgreSQL (no real emails)', () => {
       .post('/api/auth/change-password')
       .send({ currentPassword: password, newPassword: ' new password ' })
       .expect(204);
-    await expect(access.resolvePat(pat.body.token)).resolves.toBeUndefined();
+    await expect(resolveGrant()).resolves.toBeUndefined();
     await agent.get('/api/auth/me').expect(401);
     await request(app.getHttpServer())
       .get('/api/auth/me')
@@ -197,10 +206,13 @@ describe('Account settings with real PostgreSQL (no real emails)', () => {
       .set('Idempotency-Key', randomUUID())
       .send({ title: 'Private' })
       .expect(201);
-    const pat = await agent
-      .post('/api/access/tokens')
-      .send({ name: 'Test PAT', projectIds: [created.body.projectId], scopes: ['projects:read'] })
-      .expect(201);
+    const grantId = 'account-deletion-' + randomUUID();
+    const access = app.get(AccessService);
+    await access.createConnection(user, 'account-deletion-test-client', grantId, {
+      name: 'Account deletion test',
+      projectIds: [created.body.projectId],
+      scopes: ['projects:read'],
+    });
     const otherProject = await other.agent
       .post('/api/projects')
       .set('Idempotency-Key', randomUUID())
@@ -223,8 +235,16 @@ describe('Account settings with real PostgreSQL (no real emails)', () => {
     expect(results.map((result) => result.status).sort()).toEqual([204, 400]);
     expect(await database.getRepository(User).countBy({ id: user.id })).toBe(0);
     expect(await database.getRepository(Project).countBy({ id: created.body.projectId })).toBe(0);
-    expect(await database.getRepository(AccessGrant).countBy({ id: pat.body.id })).toBe(0);
-    await expect(app.get(AccessService).resolvePat(pat.body.token)).resolves.toBeUndefined();
+    const grant = await database.getRepository(AccessGrant).findOneBy({ oauthGrantId: grantId });
+    expect(grant).toBeNull();
+    await expect(
+      access.resolveOAuth(
+        grantId,
+        String(user.id),
+        'account-deletion-test-client',
+        new Set(['projects:read']),
+      ),
+    ).resolves.toBeUndefined();
     await agent.get(`/api/projects/${created.body.projectId}`).expect(401);
     await other.agent.get(`/api/projects/${otherProject.body.projectId}`).expect(200);
     await other.agent.get('/api/auth/me').expect(200);

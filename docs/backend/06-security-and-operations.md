@@ -15,9 +15,8 @@
 - Паролі хешуються Argon2id через підтримувану бібліотеку; параметри підбираються вимірюванням на сервері. Готовий hash не повертається через DTO.
 - Реєстрація, login, resend і forgot password мають rate limit та загальні відповіді, які не розкривають існування email.
 - Verify/reset challenge випадковий, одноразовий, з hash у БД і expiry. Використання позначається атомарно. Reset не входить у систему автоматично.
-- Запропонована політика: до email verification доступні підтвердження адреси, повторне надсилання, власний профіль, керування власними сесіями та вихід; проєкти, PAT та OAuth consent доступні після verification.
-- Веб використовує один непрозорий Bearer access token через Authorization header, без auth cookies, CSRF-токена та refresh-токена. Logout відкликає поточний токен; reset password відкликає всі web sessions. Для майбутнього MCP OAuth також потрібно відкликання refresh grants. PAT можна відкликати окремо або всі разом.
-- PAT секрет показується один раз. SHA-256/HMAC для випадкового secret з високою ентропією допустимий; password hashing для нього не потрібен. Порівняння секретів constant time.
+- Запропонована політика: до email verification доступні підтвердження адреси, повторне надсилання, власний профіль, керування власними сесіями та вихід; проєкти та OAuth consent доступні після verification.
+- Веб використовує один непрозорий Bearer access token через Authorization header, без auth cookies, CSRF-токена та refresh-токена. Logout відкликає поточний токен; reset password відкликає всі web sessions. Зміна або скидання пароля інвалідує OAuth-підключення та їхні refresh tokens.
 - OAuth provider використовує production adapter у PostgreSQL, ротацію signing keys, перевірку audience, redirect URI, PKCE та refresh reuse. In-memory demo provider не підходить.
 - GitHub App private key, Mailjet API keys, signing keys і storage credentials — тільки secrets environment/secret store. GitHub access token отримує worker; його немає в проєктному Git config або backup archive.
 - Відкликання перевіряється на кожній новій операції. Для вже запущеної задачі також перевіряється актуальний дозвіл перед публікацією; приватний артефакт завжди читається з повторною authorization.

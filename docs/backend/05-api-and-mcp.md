@@ -1,6 +1,6 @@
 # Контракти REST, MCP та подій
 
-Статус: проєктні контракти v0.1. Реалізація має опублікувати OpenAPI для REST та JSON Schema для MCP. Приклади нижче пояснюють цільову поведінку. Фактично реалізовані Identity endpoints описано у [10-authentication.md](10-authentication.md), створення/читання початкового проєкту — у [12-project-creation.md](12-project-creation.md); атомарні текстові saves — у [13-atomic-text-changes.md](13-atomic-text-changes.md); staging/attach/replace та скачування ресурсів — у [14-resource-uploads.md](14-resource-uploads.md); компіляція прийнятих ревізій — у [15-compilation.md](15-compilation.md); history/diff/restore — у [16-git-history.md](16-git-history.md); точні схеми є в автоматичному OpenAPI. Пропозиції/review реалізовано за [18-proposals.md](18-proposals.md). PAT/OAuth та MCP реалізовано за [19-mcp-access.md](19-mcp-access.md). Решта майбутніх поверхонь поки не реалізована.
+Статус: проєктні контракти v0.1. Реалізація має опублікувати OpenAPI для REST та JSON Schema для MCP. Приклади нижче пояснюють цільову поведінку. Фактично реалізовані Identity endpoints описано у [10-authentication.md](10-authentication.md), створення/читання початкового проєкту — у [12-project-creation.md](12-project-creation.md); атомарні текстові saves — у [13-atomic-text-changes.md](13-atomic-text-changes.md); staging/attach/replace та скачування ресурсів — у [14-resource-uploads.md](14-resource-uploads.md); компіляція прийнятих ревізій — у [15-compilation.md](15-compilation.md); history/diff/restore — у [16-git-history.md](16-git-history.md); точні схеми є в автоматичному OpenAPI. Пропозиції/review реалізовано за [18-proposals.md](18-proposals.md). OAuth та MCP реалізовано за [19-mcp-access.md](19-mcp-access.md). Решта майбутніх поверхонь поки не реалізована.
 
 ## 1. Спільні правила
 
@@ -34,7 +34,6 @@
 | Область          | Запропоновані маршрути                                                                                                                                        |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Auth             | `POST /auth/register`, `/login`, `/logout`, `/verify-email`, `/resend-verification`, `/forgot-password`, `/reset-password`, `GET /auth/me`                    |
-| PAT              | `GET/POST /access/tokens`, `DELETE /access/tokens/:id`                                                                                                        |
 | OAuth grants     | `GET /access/connections`, `DELETE /access/connections/:id`                                                                                                   |
 | Projects         | `GET/POST /projects`, `GET/PATCH/DELETE /projects/:p`                                                                                                         |
 | Current snapshot | `GET /projects/:p/state` → currentRevision, tree, context summary, compile summary                                                                            |
@@ -159,11 +158,9 @@ PDF доступний як protected HTTPS endpoint і MCP resource `typstoria:
 
 Веб: один непрозорий Bearer access token у Authorization header, серверний запис у PostgreSQL для expiry/revocation, без auth cookies і refresh-токена. Exact allowed origins для фронтенду. Скидання пароля відкликає всі поточні web access tokens; майбутній MCP OAuth має також відкликати відповідні refresh families.
 
-PAT: `Authorization: Bearer <secret>`, випадковий secret із public ID, у БД hash. Дозволені scopes/проєкти обирає користувач; read-only профіль не має propose чи compile:run. PAT призначений для клієнтів із налаштуванням bearer header й не замінює універсальний OAuth flow.
-
 OAuth: Authorization Code + PKCE S256, consent із назвою клієнта, scopes і проєктами, короткі access tokens, refresh rotation/reuse detection та revocation. MCP protected-resource metadata, authorization-server discovery, resource/audience validation — за [специфікацією MCP authorization](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization). Список registrations, redirect URI rules та client metadata discovery уточнює spike; довільні URL не можна fetch без SSRF-захисту.
 
-У доменній БД OAuthGrant визначає остаточні permissions. Перед tool/resource дією перевіряється чинність grant і credential, щоб відкликання діяло на наступний запит. Access token audience обмежена MCP resource; він не стає вебсесією. PAT і OAuth tokens не пересилаються зовнішнім сервісам на кшталт GitHub.
+У доменній БД OAuthGrant визначає остаточні permissions. Перед tool/resource дією перевіряється чинність grant і credential, щоб відкликання діяло на наступний запит. Access token audience обмежена MCP resource; він не стає вебсесією. OAuth tokens не пересилаються зовнішнім сервісам на кшталт GitHub.
 
 ## 7. Контракт із фронтендом
 

@@ -26,6 +26,7 @@ import { TypstRunner } from '../../src/modules/compilation/domain/compilation';
 import { BlobStorage } from '../../src/modules/files/infrastructure/blob-storage';
 import { LocalBlobStorage } from '../../src/modules/files/infrastructure/local-blob-storage';
 import { SessionService } from '../../src/modules/identity/application/session.service';
+import { hashToken } from '../../src/modules/identity/domain/tokens';
 import { User } from '../../src/modules/identity/infrastructure/persistence/entities/user.entity';
 import { ProjectsService } from '../../src/modules/projects/application/projects.service';
 import type { ProjectCreatedDto } from '../../src/modules/projects/http/projects.dto';
@@ -101,14 +102,19 @@ describe('P5 MCP and OAuth integration', () => {
         .expect(201)
     ).body as ProjectCreatedDto;
   }
-  async function pat(scopes: readonly string[] = mcpScopes, projectIds = [project.projectId]) {
-    return (
-      await http()
-        .post('/api/access/tokens')
-        .set('authorization', auth(web))
-        .send({ name: 'Inspector', scopes, projectIds })
-        .expect(201)
-    ).body as { id: number; token: string };
+  async function oauthToken(
+    scopes: readonly string[] = mcpScopes,
+    projectIds = [project.projectId],
+  ) {
+    const flow = await authorize(scopes.join(' '), projectIds);
+    const response = await flow.exchange();
+    if (!response.ok)
+      throw new Error('OAuth exchange failed: ' + response.status + ' ' + (await response.text()));
+    return (await response.json()) as {
+      access_token: string;
+      refresh_token: string;
+      scope: string;
+    };
   }
   async function connect(token: string, legacy = false) {
     const client = new Client(
@@ -183,70 +189,82 @@ describe('P5 MCP and OAuth integration', () => {
     if (root) await rm(root, { recursive: true, force: true });
   });
 
-  it('lists only selected projects and rechecks PAT expiry, revocation and account version', async () => {
+  it('requires OAuth, limits access to approved projects and lets the owner revoke the connection', async () => {
     const other = await userSession();
     const foreign = await createProject(other.token);
-    for (const id of [foreign.projectId, 2147483647])
-      await http()
-        .post('/api/access/tokens')
-        .set('authorization', auth(web))
-        .send({ name: 'bad', projectIds: [id], scopes: ['projects:read'] })
-        .expect(404);
-    await http()
-      .post('/api/access/tokens')
-      .set('authorization', auth(web))
-      .send({ name: 'bad', projectIds: [project.projectId], scopes: ['projects:write'] })
-      .expect(400);
-    await http()
-      .post('/api/access/tokens')
-      .set('authorization', auth(web))
-      .send({ name: 'bad', projectIds: [], scopes: ['projects:read'] })
-      .expect(400);
-    const token = await pat(['projects:read', 'documents:read']);
-    const client = await connect(token.token);
+    const tokens = await oauthToken(['projects:read', 'documents:read']);
+    const client = await connect(tokens.access_token);
     const list = await call(client, 'list_projects');
     expect(list.structuredContent).toMatchObject({
       items: [{ id: project.projectId }],
       nextCursor: null,
     });
-    const result = await call(client, 'list_files', { projectId: another.projectId });
-    expect(result).toMatchObject({
+    expect(await call(client, 'list_files', { projectId: another.projectId })).toMatchObject({
+      isError: true,
+      content: [{ text: expect.stringContaining('RESOURCE_NOT_FOUND') }],
+    });
+    expect(await call(client, 'list_files', { projectId: foreign.projectId })).toMatchObject({
       isError: true,
       content: [{ text: expect.stringContaining('RESOURCE_NOT_FOUND') }],
     });
     expect((await client.listTools()).tools.map((tool) => tool.name)).not.toContain(
       'create_proposal',
     );
-    const row = await db
-      .getRepository(AccessGrant)
-      .createQueryBuilder('g')
-      .addSelect('g.secretHash')
-      .where('g.id = :id', { id: token.id })
-      .getOneOrFail();
-    expect(row.secretHash).toMatch(/^[a-f0-9]{64}$/);
-    expect(token.token).not.toContain(row.secretHash!);
-    const listed = await http()
-      .get('/api/access/tokens')
+
+    const listing = await http()
+      .get('/api/access/connections')
       .set('authorization', auth(web))
       .expect(200)
       .expect('Cache-Control', /no-store/);
-    expect(JSON.stringify(listed.body)).not.toContain(token.token);
-    await http().get('/api/projects').set('authorization', auth(token.token)).expect(401);
+    const connection = listing.body.items[0];
+    expect(connection).toMatchObject({
+      name: 'Test desktop',
+      status: 'active',
+      projectIds: [project.projectId],
+      projects: [{ id: project.projectId, title: 'MCP document' }],
+    });
+    expect(JSON.stringify(listing.body)).not.toContain(tokens.access_token);
     await http()
-      .delete('/api/access/tokens/' + token.id)
+      .delete('/api/access/connections/' + connection.id)
       .set('authorization', auth(other.token))
       .expect(404);
     await http()
-      .delete('/api/access/tokens/' + token.id)
+      .delete('/api/access/connections/' + connection.id)
       .set('authorization', auth(web))
       .expect(204);
     await expect(client.listTools()).rejects.toThrow();
-    const expiring = await pat();
-    await db.manager.update(AccessGrant, { id: expiring.id }, { expiresAt: new Date(0) });
-    await expect(connect(expiring.token)).rejects.toThrow();
-    const reset = await pat();
-    await db.manager.increment(User, { id: user.id }, 'authVersion', 1);
-    await expect(connect(reset.token)).rejects.toThrow();
+
+    const capability = await http()
+      .get('/api/access/oauth')
+      .set('authorization', auth(web))
+      .expect(200)
+      .expect('Cache-Control', /no-store/);
+    expect(capability.body).toEqual({ enabled: true, url: origin + '/mcp' });
+    await http().get('/api/access/oauth').expect(401);
+
+    const legacySecret = randomBytes(32).toString('base64url');
+    const legacyPat = await db.getRepository(AccessGrant).save({
+      userId: user.id,
+      authVersion: user.authVersion,
+      kind: 'pat',
+      name: 'Historical token',
+      scopes: ['projects:read'],
+      projectIds: [project.projectId],
+      secretHash: hashToken(legacySecret),
+      oauthGrantId: null,
+      clientId: null,
+      expiresAt: new Date(Date.now() + 60_000),
+      revokedAt: null,
+    });
+    const legacyCredential = `tp_pat_${legacyPat.id}.${legacySecret}`;
+    await http().post('/mcp').set('authorization', auth(legacyCredential)).send({}).expect(401);
+    await http()
+      .get('/mcp/artifacts/1/1/pdf')
+      .set('authorization', auth(legacyCredential))
+      .expect(401);
+    await http().post('/api/access/tokens').set('authorization', auth(web)).send({}).expect(404);
+    await http().get('/api/access/tokens').set('authorization', auth(web)).expect(404);
+    await http().delete('/api/access/tokens/1').set('authorization', auth(web)).expect(404);
   });
 
   it('uses a real SDK client to read, search, stage PNG, propose, validate, retrieve PDF and require web acceptance', async () => {
@@ -254,8 +272,8 @@ describe('P5 MCP and OAuth integration', () => {
       const runner = realTypstRunner(join(root, 'sandbox'));
       compile.mockImplementation((input, signal) => runner.compile(input, signal));
     }
-    const token = await pat();
-    const client = await connect(token.token);
+    const token = await oauthToken();
+    const client = await connect(token.access_token);
     const names = (await client.listTools()).tools.map((tool) => tool.name);
     expect(names).toContain('create_proposal');
     expect(names).not.toEqual(expect.arrayContaining(['accept_proposal']));
@@ -320,7 +338,7 @@ describe('P5 MCP and OAuth integration', () => {
       origin + `/mcp/artifacts/${project.projectId}/${validation.compileJobId}/pdf`,
     );
     const pdf = await fetch(compiled.pdfDownloadUrl, {
-      headers: { authorization: auth(token.token) },
+      headers: { authorization: auth(token.access_token) },
     });
     expect(pdf.status).toBe(200);
     expect(pdf.headers.get('content-type')).toContain('application/pdf');
@@ -334,7 +352,7 @@ describe('P5 MCP and OAuth integration', () => {
             '/' + project.projectId + '/',
             '/' + another.projectId + '/',
           ),
-          { headers: { authorization: auth(token.token) } },
+          { headers: { authorization: auth(token.access_token) } },
         )
       ).status,
     ).toBe(404);
@@ -357,7 +375,7 @@ describe('P5 MCP and OAuth integration', () => {
     const url = `/api/projects/${project.projectId}/proposals/${proposal.id}/accept`;
     await http()
       .post(url)
-      .set('authorization', auth(token.token))
+      .set('authorization', auth(token.access_token))
       .set('Idempotency-Key', randomUUID())
       .send(body)
       .expect(401);
@@ -379,7 +397,9 @@ describe('P5 MCP and OAuth integration', () => {
     const actor = {
       channel: 'mcp' as const,
       userId: user.id,
-      credentialId: token.id,
+      credentialId: (
+        await http().get('/api/access/connections').set('authorization', auth(web)).expect(200)
+      ).body.items[0].id,
       projectIds: [project.projectId],
       scopes: mcpScopes,
     };
@@ -389,21 +409,21 @@ describe('P5 MCP and OAuth integration', () => {
   });
 
   it('works with the SDK legacy handshake and refuses untrusted origins and web tokens', async () => {
-    const token = await pat(['projects:read']);
-    const client = await connect(token.token, true);
+    const token = await oauthToken(['projects:read']);
+    const client = await connect(token.access_token, true);
     expect((await call(client, 'list_projects')).structuredContent).toMatchObject({
       items: [{ id: project.projectId }],
     });
     await http()
       .post('/mcp')
       .set('origin', 'https://evil.example')
-      .set('authorization', auth(token.token))
+      .set('authorization', auth(token.access_token))
       .send({})
       .expect(403);
     await http()
       .post('/mcp')
       .set('host', 'evil.example')
-      .set('authorization', auth(token.token))
+      .set('authorization', auth(token.access_token))
       .send({})
       .expect(403);
     await http().post('/mcp').set('authorization', auth(web)).send({}).expect(401);

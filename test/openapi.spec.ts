@@ -288,19 +288,20 @@ describe('offline OpenAPI generation', () => {
             candidateSnapshotId: { nullable: true },
           },
         });
-        const access = document.paths['/api/access/tokens'];
-        expect(access?.post).toMatchObject({
+        expect(document.paths['/api/access/tokens']).toBeUndefined();
+        expect(document.paths['/api/access/tokens/{id}']).toBeUndefined();
+        expect(document.paths['/api/access/oauth']?.get).toMatchObject({
           security: [{ bearer: [] }],
           responses: {
-            '201': {
+            '200': {
               content: {
-                'application/json': { schema: { $ref: '#/components/schemas/CreatedPatDto' } },
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/OAuthAvailabilityDto' },
+                },
               },
             },
           },
         });
-        expect(access?.get?.security).toEqual([{ bearer: [] }]);
-        expect(document.paths['/api/access/tokens/{id}']?.delete?.responses['204']).toBeDefined();
         expect(document.paths['/api/access/connections']?.get?.security).toEqual([{ bearer: [] }]);
         expect(
           document.paths['/api/access/connections/{id}']?.delete?.responses['204'],

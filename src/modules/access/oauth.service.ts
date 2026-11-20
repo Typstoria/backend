@@ -46,7 +46,8 @@ export class OAuthService {
       : undefined;
   }
   get resource(): string | undefined {
-    return this.config.mcpOrigin && this.config.mcpOrigin + '/mcp';
+    const origin = this.config.mcpOrigin;
+    return origin && this.issuer ? origin + '/mcp' : undefined;
   }
 
   protectedResourceMetadata() {

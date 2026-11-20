@@ -29,6 +29,7 @@ export class AccessGrant {
   id!: number;
   @Column({ name: 'user_id', type: 'integer' }) userId!: number;
   @Column({ name: 'auth_version', type: 'integer' }) authVersion!: number;
+  // Historical grants are retained for audit. Only OAuth grants are issued or authenticated.
   @Column({ type: 'varchar', length: 8 }) kind!: 'pat' | 'oauth';
   @Column({ type: 'varchar', length: 100 }) name!: string;
   @Column({ type: 'varchar', array: true }) scopes!: McpScope[];
